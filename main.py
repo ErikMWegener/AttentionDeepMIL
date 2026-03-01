@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.utils.data as data_utils
 
 from dataloader import MnistBags
+from metrics import calculate_metrics, save_results_to_csv
 from model import Attention, GatedAttention
 
 # Training settings
@@ -31,6 +32,8 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--model', type=str, default='attention', help='Choose b/w attention and gated_attention')
+parser.add_argument('--results_csv', type=str, default='results.csv', metavar='CSV',
+                    help='path to CSV file for logging results (default: results.csv)')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -106,17 +109,30 @@ def test():
     model.eval()
     test_loss = 0.
     test_error = 0.
-    
+    y_true = []
+    y_pred = []
+    y_prob = []
+
     with torch.no_grad():
         for batch_idx, (data, label) in enumerate(test_loader):
             bag_label = label[0]
             instance_labels = label[1]
             if args.cuda:
                 data, bag_label = data.cuda(), bag_label.cuda()
-            loss, attention_weights = model.calculate_objective(data, bag_label)
+
+            # Single forward pass to avoid redundant computation
+            Y_prob, predicted_label, attention_weights = model.forward(data)
+
+            bag_label_f = bag_label.float()
+            Y_prob_clamped = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
+            loss = -1. * (bag_label_f * torch.log(Y_prob_clamped) + (1. - bag_label_f) * torch.log(1. - Y_prob_clamped))
             test_loss += loss.item()
-            error, predicted_label = model.calculate_classification_error(data, bag_label)
+            error = 1. - predicted_label.eq(bag_label_f).cpu().float().mean().data.item()
             test_error += error
+
+            y_true.append(int(bag_label.cpu().data.numpy()[0]))
+            y_pred.append(int(predicted_label.cpu().data.numpy()[0][0]))
+            y_prob.append(float(Y_prob.cpu().data.numpy()[0][0]))
 
             if batch_idx < 5:  # plot bag labels and instance labels for first 5 bags
                 bag_level = (bag_label.cpu().data.numpy()[0], int(predicted_label.cpu().data.numpy()[0][0]))
@@ -130,6 +146,28 @@ def test():
     test_loss /= len(test_loader)
 
     print('\nTest Set, Loss: {:.4f}, Test error: {:.4f}'.format(test_loss, test_error))
+
+    metrics = calculate_metrics(y_true, y_pred, y_prob)
+    print('Accuracy: {:.4f}, Precision: {:.4f}, Recall: {:.4f}, '
+          'F1-Score: {:.4f}, AUC: {:.4f}'.format(
+              metrics['accuracy'], metrics['precision'], metrics['recall'],
+              metrics['f1_score'], metrics['auc']))
+
+    config = {
+        'model': args.model,
+        'epochs': args.epochs,
+        'lr': args.lr,
+        'reg': args.reg,
+        'target_number': args.target_number,
+        'mean_bag_length': args.mean_bag_length,
+        'var_bag_length': args.var_bag_length,
+        'num_bags_train': args.num_bags_train,
+        'num_bags_test': args.num_bags_test,
+        'seed': args.seed,
+        'test_loss': test_loss,
+        'test_error': test_error,
+    }
+    save_results_to_csv(args.results_csv, config, metrics)
 
 
 if __name__ == "__main__":
