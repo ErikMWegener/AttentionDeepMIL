@@ -53,8 +53,8 @@ class TestCountPositiveInstances:
         bag = _make_dummy_bag(1)
         with torch.no_grad():
             count, A = model.count_positive_instances(bag)
-        # Single instance gets all attention (softmax=1.0), threshold=1/1=1.0
-        # Since 1.0 is not > 1.0, count should be 0 with default threshold
+        # Single instance gets all attention (softmax=1.0), default threshold=1/1=1.0.
+        # The threshold is exclusive (strictly greater than), so 1.0 is not > 1.0.
         assert count == 0
         assert A.shape == (1, 1)
 
