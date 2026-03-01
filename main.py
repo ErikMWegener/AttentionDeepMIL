@@ -139,8 +139,13 @@ def test():
                 instance_level = list(zip(instance_labels.numpy()[0].tolist(),
                                     np.round(attention_weights.cpu().data.numpy()[0], decimals=3).tolist()))
 
+                predicted_count, _ = model.count_positive_instances(data)
+                true_count = int(instance_labels.sum().item())
+
                 print('\nTrue Bag Label, Predicted Bag Label: {}\n'
-                    'True Instance Labels, Attention Weights: {}'.format(bag_level, instance_level))
+                    'True Instance Labels, Attention Weights: {}\n'
+                    'True Positive Instance Count: {}, Predicted Positive Instance Count: {}'.format(
+                        bag_level, instance_level, true_count, predicted_count))
 
     test_error /= len(test_loader)
     test_loss /= len(test_loader)
