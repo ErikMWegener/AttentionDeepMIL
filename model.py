@@ -34,6 +34,7 @@ class Attention(nn.Module):
             nn.Linear(self.M*self.ATTENTION_BRANCHES, 1),
             nn.Sigmoid()
         )
+        
 
     def forward(self, x):
         x = x.squeeze(0)
@@ -44,6 +45,7 @@ class Attention(nn.Module):
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
         A = torch.transpose(A, 1, 0)  # ATTENTION_BRANCHESxK
+        A = A / (self.L ** 0.5)  # <-- scale logits to prevent uniform softmax
         A = F.softmax(A, dim=1)  # softmax over K
 
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
@@ -137,6 +139,7 @@ class GatedAttention(nn.Module):
         A_U = self.attention_U(H)  # KxL
         A = self.attention_w(A_V * A_U) # element wise multiplication # KxATTENTION_BRANCHES
         A = torch.transpose(A, 1, 0)  # ATTENTION_BRANCHESxK
+        A = A / (self.L ** 0.5)  # <-- scale logits
         A = F.softmax(A, dim=1)  # softmax over K
 
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
