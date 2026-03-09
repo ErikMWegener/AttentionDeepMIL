@@ -114,6 +114,8 @@ def test():
     y_true = []
     y_pred = []
     y_prob = []
+    counting_correct = 0
+    counting_total = 0
 
     with torch.no_grad():
         for batch_idx, (data, label) in enumerate(test_loader):
@@ -136,14 +138,18 @@ def test():
             y_pred.append(int(predicted_label.cpu().data.numpy()[0][0]))
             y_prob.append(float(Y_prob.cpu().data.numpy()[0][0]))
 
+            if args.naive_counting:
+                predicted_count, _ = model.count_positive_instances(data)
+                true_count = int(instance_labels.sum().item())
+                if predicted_count == true_count:
+                    counting_correct += 1
+                counting_total += 1
+
             if batch_idx < 5:  # plot bag labels and instance labels for first 5 bags
                 bag_level = (bag_label.cpu().data.numpy()[0], int(predicted_label.cpu().data.numpy()[0][0]))
                 instance_level = list(zip(instance_labels.numpy()[0].tolist(),
                                     np.round(attention_weights.cpu().data.numpy()[0], decimals=3).tolist()))
                 if args.naive_counting:
-                    predicted_count, _ = model.count_positive_instances(data)
-                    true_count = int(instance_labels.sum().item())
-                
                     print('\nTrue Bag Label, Predicted Bag Label: {}\n'
                       'True Instance Labels, Attention Weights: {}\n'
                       'True Positive Instance Count: {}, Predicted Positive Instance Count: {}'.format(
@@ -163,6 +169,11 @@ def test():
           'F1-Score: {:.4f}, AUC: {:.4f}'.format(
               metrics['accuracy'], metrics['precision'], metrics['recall'],
               metrics['f1_score'], metrics['auc']))
+
+    if args.naive_counting and counting_total > 0:
+        counting_accuracy = counting_correct / counting_total
+        metrics['counting_accuracy'] = counting_accuracy
+        print('Counting Accuracy: {:.4f}'.format(counting_accuracy))
 
     config = {
         'model': args.model,
