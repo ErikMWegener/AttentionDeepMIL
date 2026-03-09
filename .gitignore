@@ -8,3 +8,7 @@ dist/
 build/
 .env
 .venv
+datasets/
+*.csv
+!requirements*.csv
+.pytest_cache/

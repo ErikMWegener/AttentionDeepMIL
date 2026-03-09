@@ -8,9 +8,10 @@ import torch.utils.data as data_utils
 from dataloader import MnistBags
 from metrics import calculate_metrics, save_results_to_csv
 from model import Attention, GatedAttention
+from wheat_loader import WheatHeadBags
 
 # Training settings
-parser = argparse.ArgumentParser(description='PyTorch MNIST bags Example')
+parser = argparse.ArgumentParser(description='PyTorch MIL bags Example')
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 20)')
 parser.add_argument('--lr', type=float, default=0.0005, metavar='LR',
@@ -36,6 +37,30 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
 parser.add_argument('--model', type=str, default='attention', help='Choose b/w attention and gated_attention')
 parser.add_argument('--results_csv', type=str, default='results.csv', metavar='CSV',
                     help='path to CSV file for logging results (default: results.csv)')
+parser.add_argument('--dataset', type=str, default='mnist',
+                    choices=['mnist', 'wheat'],
+                    help="dataset to use: 'mnist' or 'wheat' (default: mnist)")
+
+# Wheat-specific arguments
+parser.add_argument('--data_dir', type=str,
+                    default='../datasets/global-wheat-detection',
+                    help='path to the Global Wheat Head Detection dataset '
+                         '(default: ../datasets/global-wheat-detection)')
+parser.add_argument('--patch_size', type=int, default=28,
+                    help='side length of square patches for the wheat '
+                         'dataset (default: 28)')
+parser.add_argument('--stride', type=int, default=None,
+                    help='stride for wheat patch extraction; defaults to '
+                         'patch_size (non-overlapping)')
+parser.add_argument('--overlap_threshold', type=float, default=0.25,
+                    help='minimum patch-bbox overlap fraction to label a '
+                         'wheat patch as positive (default: 0.25)')
+parser.add_argument('--train_split', type=float, default=0.8,
+                    help='fraction of images used for training in the '
+                         'wheat dataset (default: 0.8)')
+parser.add_argument('--max_patches_per_bag', type=int, default=None,
+                    help='maximum patches per bag for wheat dataset; '
+                         'None keeps all patches')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -48,25 +73,57 @@ if args.cuda:
 print('Load Train and Test Set')
 loader_kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-train_loader = data_utils.DataLoader(MnistBags(target_number=args.target_number,
-                                               mean_bag_length=args.mean_bag_length,
-                                               var_bag_length=args.var_bag_length,
-                                               num_bag=args.num_bags_train,
-                                               seed=args.seed,
-                                               train=True),
-                                     batch_size=1,
-                                     shuffle=True,
-                                     **loader_kwargs)
+if args.dataset == 'mnist':
+    train_loader = data_utils.DataLoader(
+        MnistBags(target_number=args.target_number,
+                  mean_bag_length=args.mean_bag_length,
+                  var_bag_length=args.var_bag_length,
+                  num_bag=args.num_bags_train,
+                  seed=args.seed,
+                  train=True),
+        batch_size=1,
+        shuffle=True,
+        **loader_kwargs)
 
-test_loader = data_utils.DataLoader(MnistBags(target_number=args.target_number,
-                                              mean_bag_length=args.mean_bag_length,
-                                              var_bag_length=args.var_bag_length,
-                                              num_bag=args.num_bags_test,
-                                              seed=args.seed,
-                                              train=False),
-                                    batch_size=1,
-                                    shuffle=False,
-                                    **loader_kwargs)
+    test_loader = data_utils.DataLoader(
+        MnistBags(target_number=args.target_number,
+                  mean_bag_length=args.mean_bag_length,
+                  var_bag_length=args.var_bag_length,
+                  num_bag=args.num_bags_test,
+                  seed=args.seed,
+                  train=False),
+        batch_size=1,
+        shuffle=False,
+        **loader_kwargs)
+
+elif args.dataset == 'wheat':
+    train_loader = data_utils.DataLoader(
+        WheatHeadBags(data_dir=args.data_dir,
+                      patch_size=args.patch_size,
+                      stride=args.stride,
+                      num_bag=args.num_bags_train,
+                      seed=args.seed,
+                      train=True,
+                      overlap_threshold=args.overlap_threshold,
+                      train_split=args.train_split,
+                      max_patches_per_bag=args.max_patches_per_bag),
+        batch_size=1,
+        shuffle=True,
+        **loader_kwargs)
+
+    test_loader = data_utils.DataLoader(
+        WheatHeadBags(data_dir=args.data_dir,
+                      patch_size=args.patch_size,
+                      stride=args.stride,
+                      num_bag=args.num_bags_test,
+                      seed=args.seed,
+                      train=False,
+                      overlap_threshold=args.overlap_threshold,
+                      train_split=args.train_split,
+                      max_patches_per_bag=args.max_patches_per_bag),
+        batch_size=1,
+        shuffle=False,
+        **loader_kwargs)
 
 print('Init Model')
 if args.model=='attention':
@@ -145,18 +202,31 @@ def test():
                     counting_correct += 1
                 counting_total += 1
 
+            # wheat_head_count is available when using the wheat dataset
+            wheat_head_count = None
+            if len(label) > 2:
+                wheat_head_count = int(label[2].flatten()[0].item())
+
             if batch_idx < 5:  # plot bag labels and instance labels for first 5 bags
                 bag_level = (bag_label.cpu().data.numpy()[0], int(predicted_label.cpu().data.numpy()[0][0]))
                 instance_level = list(zip(instance_labels.numpy()[0].tolist(),
                                     np.round(attention_weights.cpu().data.numpy()[0], decimals=3).tolist()))
                 if args.naive_counting:
-                    print('\nTrue Bag Label, Predicted Bag Label: {}\n'
+                    msg = ('\nTrue Bag Label, Predicted Bag Label: {}\n'
                       'True Instance Labels, Attention Weights: {}\n'
                       'True Positive Instance Count: {}, Predicted Positive Instance Count: {}'.format(
                       bag_level, instance_level, true_count, predicted_count))
+                    if wheat_head_count is not None:
+                        msg += '\nWheat Head Count in Image: {}'.format(
+                            wheat_head_count)
+                    print(msg)
                 else:
-                    print('\nTrue Bag Label, Predicted Bag Label: {}\n'
+                    msg = ('\nTrue Bag Label, Predicted Bag Label: {}\n'
                         'True Instance Labels, Attention Weights: {}'.format(bag_level, instance_level))
+                    if wheat_head_count is not None:
+                        msg += '\nWheat Head Count in Image: {}'.format(
+                            wheat_head_count)
+                    print(msg)
                 
 
     test_error /= len(test_loader)
@@ -176,6 +246,7 @@ def test():
         print('Counting Accuracy: {:.4f}'.format(counting_accuracy))
 
     config = {
+        'dataset': args.dataset,
         'model': args.model,
         'epochs': args.epochs,
         'lr': args.lr,
@@ -189,6 +260,15 @@ def test():
         'test_loss': test_loss,
         'test_error': test_error,
     }
+    if args.dataset == 'wheat':
+        config.update({
+            'data_dir': args.data_dir,
+            'patch_size': args.patch_size,
+            'stride': args.stride,
+            'overlap_threshold': args.overlap_threshold,
+            'train_split': args.train_split,
+            'max_patches_per_bag': args.max_patches_per_bag,
+        })
     save_results_to_csv(args.results_csv, config, metrics)
 
 
