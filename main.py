@@ -27,6 +27,8 @@ parser.add_argument('--num_bags_train', type=int, default=200, metavar='NTrain',
                     help='number of bags in training set')
 parser.add_argument('--num_bags_test', type=int, default=50, metavar='NTest',
                     help='number of bags in test set')
+parser.add_argument('--naive_counting', action='store_true', default=False,
+                    help='activates counting of positve instances for model testing')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -138,14 +140,18 @@ def test():
                 bag_level = (bag_label.cpu().data.numpy()[0], int(predicted_label.cpu().data.numpy()[0][0]))
                 instance_level = list(zip(instance_labels.numpy()[0].tolist(),
                                     np.round(attention_weights.cpu().data.numpy()[0], decimals=3).tolist()))
-
-                predicted_count, _ = model.count_positive_instances(data)
-                true_count = int(instance_labels.sum().item())
-
-                print('\nTrue Bag Label, Predicted Bag Label: {}\n'
-                    'True Instance Labels, Attention Weights: {}\n'
-                    'True Positive Instance Count: {}, Predicted Positive Instance Count: {}'.format(
-                        bag_level, instance_level, true_count, predicted_count))
+                if args.naive_counting:
+                    predicted_count, _ = model.count_positive_instances(data)
+                    true_count = int(instance_labels.sum().item())
+                
+                    print('\nTrue Bag Label, Predicted Bag Label: {}\n'
+                      'True Instance Labels, Attention Weights: {}\n'
+                      'True Positive Instance Count: {}, Predicted Positive Instance Count: {}'.format(
+                      bag_level, instance_level, true_count, predicted_count))
+                else:
+                    print('\nTrue Bag Label, Predicted Bag Label: {}\n'
+                        'True Instance Labels, Attention Weights: {}'.format(bag_level, instance_level))
+                
 
     test_error /= len(test_loader)
     test_loss /= len(test_loader)
