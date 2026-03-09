@@ -5,7 +5,7 @@ import torch
 import torch.optim as optim
 import torch.utils.data as data_utils
 
-from dataloader import MnistBags
+from mnist_bags_loader import MnistBags
 from metrics import calculate_metrics, save_results_to_csv
 from model import Attention, GatedAttention
 
