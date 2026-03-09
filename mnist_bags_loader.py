@@ -69,7 +69,7 @@ class MnistBags(data_utils.Dataset):
                             index_list.append(index)
                             bag_length_counter += 1
 
-                    index_list = np.array(index_list)
+                    index_list = torch.cat(index_list)  # flatten to 1D tensor of indices
                     labels_in_bag = labels[index_list]
                     labels_in_bag = labels_in_bag >= self.target_number
                     labels_list.append(labels_in_bag)
@@ -121,7 +121,7 @@ class MnistBags(data_utils.Dataset):
                             index_list.append(index)
                             bag_length_counter += 1
 
-                    index_list = np.array(index_list)
+                    index_list = torch.cat(index_list)  # flatten to 1D tensor of indices
                     labels_in_bag = labels[index_list]
                     labels_in_bag = labels_in_bag >= self.target_number
                     labels_list.append(labels_in_bag)
