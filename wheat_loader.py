@@ -127,7 +127,7 @@ class WheatHeadBags(data_utils.Dataset):
             )
 
         images = {}
-        annotations: dict[str, list] = {}
+        annotations: dict = {}
 
         with open(csv_path, newline='') as f:
             reader = csv.DictReader(f)
@@ -152,7 +152,7 @@ class WheatHeadBags(data_utils.Dataset):
     def _load_from_huggingface(self):
         """Attempt to load from HuggingFace ``datasets``."""
         try:
-            from datasets import load_dataset  # noqa: F811
+            from datasets import load_dataset
         except ImportError:
             raise ImportError(
                 "Could not load the dataset.  Either provide a local "
@@ -173,7 +173,7 @@ class WheatHeadBags(data_utils.Dataset):
             ) from e
 
         images = {}
-        annotations: dict[str, list] = {}
+        annotations: dict = {}
 
         for item in ds:
             image_id = str(item['image_id'])

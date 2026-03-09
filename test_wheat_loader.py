@@ -273,11 +273,9 @@ class TestMissingDataset:
         img_dir = os.path.join(data_dir, 'train')
         os.makedirs(img_dir, exist_ok=True)
         # No train.csv
-        try:
+        import pytest
+        with pytest.raises(FileNotFoundError):
             WheatHeadBags(data_dir=data_dir, patch_size=28)
-            assert False, "Should have raised FileNotFoundError"
-        except FileNotFoundError:
-            pass
 
     def test_missing_image_dir(self, tmp_path):
         data_dir = str(tmp_path / 'bad2')
@@ -285,11 +283,9 @@ class TestMissingDataset:
         csv_path = os.path.join(data_dir, 'train.csv')
         with open(csv_path, 'w') as f:
             f.write('image_id,width,height,bbox,source\n')
-        try:
+        import pytest
+        with pytest.raises(FileNotFoundError):
             WheatHeadBags(data_dir=data_dir, patch_size=28)
-            assert False, "Should have raised FileNotFoundError"
-        except FileNotFoundError:
-            pass
 
 
 if __name__ == "__main__":

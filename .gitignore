@@ -10,5 +10,4 @@ build/
 .venv
 datasets/
 *.csv
-!requirements*.csv
 .pytest_cache/
