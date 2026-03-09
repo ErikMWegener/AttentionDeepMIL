@@ -69,6 +69,25 @@ class Attention(nn.Module):
 
         return neg_log_likelihood, A
 
+    def count_positive_instances(self, X, threshold=None):
+        """Count instances in a bag whose attention weight exceeds a threshold.
+
+        Args:
+            X: Input bag tensor.
+            threshold: Attention weight threshold. If None, uses 1/K
+                (uniform attention), where K is the number of instances.
+
+        Returns:
+            count: Number of instances with attention weight above the threshold.
+            attention_weights: The raw attention weights for all instances.
+        """
+        _, _, A = self.forward(X)
+        K = A.shape[1]  # number of instances
+        if threshold is None:
+            threshold = 1.0 / K
+        count = int((A.squeeze(0) > threshold).sum().item())
+        return count, A
+
 class GatedAttention(nn.Module):
     def __init__(self):
         super(GatedAttention, self).__init__()
@@ -142,3 +161,22 @@ class GatedAttention(nn.Module):
         neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
         return neg_log_likelihood, A
+
+    def count_positive_instances(self, X, threshold=None):
+        """Count instances in a bag whose attention weight exceeds a threshold.
+
+        Args:
+            X: Input bag tensor.
+            threshold: Attention weight threshold. If None, uses 1/K
+                (uniform attention), where K is the number of instances.
+
+        Returns:
+            count: Number of instances with attention weight above the threshold.
+            attention_weights: The raw attention weights for all instances.
+        """
+        _, _, A = self.forward(X)
+        K = A.shape[1]  # number of instances
+        if threshold is None:
+            threshold = 1.0 / K
+        count = int((A.squeeze(0) > threshold).sum().item())
+        return count, A
