@@ -196,7 +196,10 @@ def test():
             y_prob.append(float(Y_prob.cpu().data.numpy()[0][0]))
 
             if args.naive_counting:
-                predicted_count, _ = model.count_positive_instances(data)
+                if predicted_label.cpu().data.numpy()[0][0] == 1:
+                    predicted_count, _ = model.count_positive_instances(data)
+                else:
+                    predicted_count = 0
                 true_count = int(instance_labels.sum().item())
                 if predicted_count == true_count:
                     counting_correct += 1
