@@ -288,6 +288,150 @@ class TestMissingDataset:
             WheatHeadBags(data_dir=data_dir, patch_size=28)
 
 
+class TestMixBags:
+    """Tests for the mix_bags feature."""
+
+    def test_equal_positive_negative_bags(self, tmp_path):
+        """mix_bags should produce equal numbers of positive and negative bags."""
+        data_dir = _create_synthetic_dataset(tmp_path, num_images=5,
+                                             img_size=56,
+                                             bboxes_per_image=2,
+                                             bbox_size=20)
+        ds = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=42,
+                           train=True, train_split=1.0,
+                           mix_bags=True, num_bag=20,
+                           mean_bag_length=10, var_bag_length=2)
+
+        pos_count = 0
+        neg_count = 0
+        for i in range(len(ds)):
+            _, label = ds[i]
+            bag_label = int(label[0].item())
+            if bag_label == 1:
+                pos_count += 1
+            else:
+                neg_count += 1
+        assert pos_count == neg_count
+
+    def test_positive_bags_have_positive_instances(self, tmp_path):
+        """Every positive bag should contain at least one positive instance."""
+        data_dir = _create_synthetic_dataset(tmp_path, num_images=5,
+                                             img_size=56,
+                                             bboxes_per_image=2,
+                                             bbox_size=20)
+        ds = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=42,
+                           train=True, train_split=1.0,
+                           mix_bags=True, num_bag=20,
+                           mean_bag_length=10, var_bag_length=2)
+
+        for i in range(len(ds)):
+            _, label = ds[i]
+            bag_label = int(label[0].item())
+            if bag_label == 1:
+                assert label[1].sum().item() > 0
+
+    def test_negative_bags_have_no_positive_instances(self, tmp_path):
+        """Every negative bag should have zero positive instances."""
+        data_dir = _create_synthetic_dataset(tmp_path, num_images=5,
+                                             img_size=56,
+                                             bboxes_per_image=2,
+                                             bbox_size=20)
+        ds = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=42,
+                           train=True, train_split=1.0,
+                           mix_bags=True, num_bag=20,
+                           mean_bag_length=10, var_bag_length=2)
+
+        for i in range(len(ds)):
+            _, label = ds[i]
+            bag_label = int(label[0].item())
+            if bag_label == 0:
+                assert label[1].sum().item() == 0
+
+    def test_varying_positive_count(self, tmp_path):
+        """Positive bags should have varying numbers of positive instances."""
+        data_dir = _create_synthetic_dataset(tmp_path, num_images=5,
+                                             img_size=56,
+                                             bboxes_per_image=2,
+                                             bbox_size=20)
+        ds = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=42,
+                           train=True, train_split=1.0,
+                           mix_bags=True, num_bag=40,
+                           mean_bag_length=10, var_bag_length=2)
+
+        positive_counts = set()
+        for i in range(len(ds)):
+            _, label = ds[i]
+            bag_label = int(label[0].item())
+            if bag_label == 1:
+                positive_counts.add(int(label[1].sum().item()))
+
+        # With 20 positive bags, there should be more than 1 unique count
+        assert len(positive_counts) > 1
+
+    def test_mix_bags_interface(self, tmp_path):
+        """Mixed bags should produce the same interface as normal bags."""
+        data_dir = _create_synthetic_dataset(tmp_path, num_images=5,
+                                             img_size=56,
+                                             bboxes_per_image=2,
+                                             bbox_size=20)
+        ds = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=42,
+                           train=True, train_split=1.0,
+                           mix_bags=True, num_bag=10,
+                           mean_bag_length=8, var_bag_length=1)
+
+        assert len(ds) > 0
+        bag, label = ds[0]
+        assert bag.ndim == 4
+        assert bag.shape[1] == 1  # grayscale
+        assert bag.shape[2] == 28
+        assert bag.shape[3] == 28
+        assert len(label) == 3
+        bag_label, instance_labels, wh_count = label
+        assert instance_labels.shape[0] == bag.shape[0]
+        assert wh_count.numel() == 1
+
+    def test_mix_bags_reproducibility(self, tmp_path):
+        """Same seed should produce identical mixed bags."""
+        data_dir = _create_synthetic_dataset(tmp_path, num_images=5,
+                                             img_size=56,
+                                             bboxes_per_image=2,
+                                             bbox_size=20)
+        ds1 = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=7,
+                            train=True, train_split=1.0,
+                            mix_bags=True, num_bag=10,
+                            mean_bag_length=8, var_bag_length=1)
+        ds2 = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=7,
+                            train=True, train_split=1.0,
+                            mix_bags=True, num_bag=10,
+                            mean_bag_length=8, var_bag_length=1)
+
+        assert len(ds1) == len(ds2)
+        for i in range(len(ds1)):
+            b1, l1 = ds1[i]
+            b2, l2 = ds2[i]
+            assert torch.equal(b1, b2)
+            assert torch.equal(l1[1], l2[1])
+
+    def test_mix_bags_dataloader(self, tmp_path):
+        """Mixed bags should work with DataLoader."""
+        import torch.utils.data as data_utils
+
+        data_dir = _create_synthetic_dataset(tmp_path, num_images=5,
+                                             img_size=56,
+                                             bboxes_per_image=2,
+                                             bbox_size=20)
+        ds = WheatHeadBags(data_dir=data_dir, patch_size=28, seed=1,
+                           train=True, train_split=1.0,
+                           mix_bags=True, num_bag=6,
+                           mean_bag_length=8, var_bag_length=1)
+        loader = data_utils.DataLoader(ds, batch_size=1, shuffle=False)
+
+        for batch_idx, (data, label) in enumerate(loader):
+            bag_label = label[0]
+            assert data.ndim == 5  # (batch, N, C, H, W)
+            assert data.shape[0] == 1
+
+
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__, "-v"])

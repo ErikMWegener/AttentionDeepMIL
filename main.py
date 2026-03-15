@@ -61,6 +61,11 @@ parser.add_argument('--train_split', type=float, default=0.8,
 parser.add_argument('--max_patches_per_bag', type=int, default=None,
                     help='maximum patches per bag for wheat dataset; '
                          'None keeps all patches')
+parser.add_argument('--mix_bags', action='store_true', default=False,
+                    help='pool all positive and negative wheat patches '
+                         'and generate new mixed bags with equal '
+                         'positive/negative counts and varying positive '
+                         'instances')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -106,7 +111,10 @@ elif args.dataset == 'wheat':
                       train=True,
                       overlap_threshold=args.overlap_threshold,
                       train_split=args.train_split,
-                      max_patches_per_bag=args.max_patches_per_bag),
+                      max_patches_per_bag=args.max_patches_per_bag,
+                      mix_bags=args.mix_bags,
+                      mean_bag_length=args.mean_bag_length,
+                      var_bag_length=args.var_bag_length),
         batch_size=1,
         shuffle=True,
         **loader_kwargs)
@@ -120,7 +128,10 @@ elif args.dataset == 'wheat':
                       train=False,
                       overlap_threshold=args.overlap_threshold,
                       train_split=args.train_split,
-                      max_patches_per_bag=args.max_patches_per_bag),
+                      max_patches_per_bag=args.max_patches_per_bag,
+                      mix_bags=args.mix_bags,
+                      mean_bag_length=args.mean_bag_length,
+                      var_bag_length=args.var_bag_length),
         batch_size=1,
         shuffle=False,
         **loader_kwargs)
@@ -271,6 +282,7 @@ def test():
             'overlap_threshold': args.overlap_threshold,
             'train_split': args.train_split,
             'max_patches_per_bag': args.max_patches_per_bag,
+            'mix_bags': args.mix_bags,
         })
     save_results_to_csv(args.results_csv, config, metrics)
 

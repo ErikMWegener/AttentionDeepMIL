@@ -57,12 +57,22 @@ class WheatHeadBags(data_utils.Dataset):
         max_patches_per_bag: When set, at most this many patches are
             kept per bag (selected at random).  ``None`` keeps all
             patches.
+        mix_bags: When ``True``, all positive and negative patches are
+            pooled across images and new mixed bags are generated with
+            an equal number of positive and negative bags.  Positive
+            bags contain a varying number of positive instances.
+        mean_bag_length: Average number of instances per mixed bag
+            (default: 10).  Only used when *mix_bags* is ``True``.
+        var_bag_length: Standard deviation of the number of instances
+            per mixed bag (default: 2).  Only used when *mix_bags* is
+            ``True``.
     """
 
     def __init__(self, data_dir='../datasets/gwhd_2021',
                  patch_size=28, stride=None, num_bag=None, seed=1,
                  train=True, overlap_threshold=0.25, train_split=0.8,
-                 max_patches_per_bag=None):
+                 max_patches_per_bag=None, mix_bags=False,
+                 mean_bag_length=10, var_bag_length=2):
         self.data_dir = data_dir
         self.patch_size = patch_size
         self.stride = stride if stride is not None else patch_size
@@ -71,6 +81,9 @@ class WheatHeadBags(data_utils.Dataset):
         self.overlap_threshold = overlap_threshold
         self.train_split = train_split
         self.max_patches_per_bag = max_patches_per_bag
+        self.mix_bags = mix_bags
+        self.mean_bag_length = mean_bag_length
+        self.var_bag_length = var_bag_length
 
         self.r = np.random.RandomState(seed)
 
@@ -97,12 +110,19 @@ class WheatHeadBags(data_utils.Dataset):
         else:
             self.image_ids = preselected_image_ids
 
-        if self.num_bag is not None and self.num_bag < len(self.image_ids):
-            self.image_ids = self.image_ids[:self.num_bag]
+        # When mixing bags we use all images for the patch pool;
+        # otherwise num_bag limits images as before.
+        if not self.mix_bags:
+            if self.num_bag is not None and self.num_bag < len(self.image_ids):
+                self.image_ids = self.image_ids[:self.num_bag]
 
         # Pre-compute bags ----------------------------------------------
-        self.bags_list, self.labels_list, self.counts_list = \
-            self._create_bags()
+        if self.mix_bags:
+            self.bags_list, self.labels_list, self.counts_list = \
+                self._create_mixed_bags()
+        else:
+            self.bags_list, self.labels_list, self.counts_list = \
+                self._create_bags()
 
     # ------------------------------------------------------------------
     # Data loading
@@ -372,6 +392,96 @@ class WheatHeadBags(data_utils.Dataset):
             bags_list.append(bag)
             labels_list.append(instance_labels)
             counts_list.append(wh_count)
+
+        return bags_list, labels_list, counts_list
+
+    def _create_mixed_bags(self):
+        """Pool all patches and create new mixed bags.
+
+        All positive and negative patches are collected across images.
+        An equal number of positive and negative bags is generated:
+
+        * **Positive bags** contain a varying number of positive
+          instances (at least one, up to the full bag length) mixed
+          with negative instances.
+        * **Negative bags** contain only negative instances.
+
+        The number of instances per bag is drawn from
+        ``N(mean_bag_length, var_bag_length)`` (clamped to >= 1).
+        Patches are sampled with replacement so the pool can be reused
+        across many bags.
+        """
+        all_positive = []
+        all_negative = []
+
+        for image_id in self.image_ids:
+            patches, patch_labels, _ = self._extract_patches(image_id)
+            for patch, label in zip(patches, patch_labels):
+                tensor_patch = self.transform(patch)
+                if label == 1:
+                    all_positive.append(tensor_patch)
+                else:
+                    all_negative.append(tensor_patch)
+
+        if not all_positive or not all_negative:
+            import warnings
+            warnings.warn(
+                "mix_bags requires both positive and negative patches "
+                "but one pool is empty. Returning zero bags. Consider "
+                "adjusting overlap_threshold or using more images.")
+            return [], [], []
+
+        # Determine the number of bags per class (positive / negative).
+        if self.num_bag is not None:
+            num_bags_per_class = max(1, self.num_bag // 2)
+        else:
+            num_bags_per_class = max(1, len(self.image_ids))
+
+        bags_list = []
+        labels_list = []
+        counts_list = []
+
+        # --- Positive bags (varying number of positive instances) ------
+        for _ in range(num_bags_per_class):
+            bag_length = max(1, int(self.r.normal(
+                self.mean_bag_length, self.var_bag_length)))
+            num_positive = self.r.randint(1, max(2, bag_length + 1))
+            num_negative = bag_length - num_positive
+
+            pos_idx = self.r.choice(
+                len(all_positive), num_positive, replace=True)
+            instances = [all_positive[i] for i in pos_idx]
+            inst_labels = [1] * num_positive
+
+            if num_negative > 0:
+                neg_idx = self.r.choice(
+                    len(all_negative), num_negative, replace=True)
+                instances.extend([all_negative[i] for i in neg_idx])
+                inst_labels.extend([0] * num_negative)
+
+            # Shuffle within the bag
+            order = self.r.permutation(len(instances))
+            instances = [instances[i] for i in order]
+            inst_labels = [inst_labels[i] for i in order]
+
+            bags_list.append(torch.stack(instances))
+            labels_list.append(
+                torch.tensor(inst_labels, dtype=torch.long))
+            counts_list.append(num_positive)
+
+        # --- Negative bags (only negative instances) -------------------
+        for _ in range(num_bags_per_class):
+            bag_length = max(1, int(self.r.normal(
+                self.mean_bag_length, self.var_bag_length)))
+            neg_idx = self.r.choice(
+                len(all_negative), bag_length, replace=True)
+            instances = [all_negative[i] for i in neg_idx]
+            inst_labels = [0] * bag_length
+
+            bags_list.append(torch.stack(instances))
+            labels_list.append(
+                torch.tensor(inst_labels, dtype=torch.long))
+            counts_list.append(0)
 
         return bags_list, labels_list, counts_list
 
