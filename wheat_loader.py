@@ -59,7 +59,7 @@ class WheatHeadBags(data_utils.Dataset):
             patches.
     """
 
-    def __init__(self, data_dir='../datasets/global-wheat-detection',
+    def __init__(self, data_dir='../datasets/gwhd_2021',
                  patch_size=28, stride=None, num_bag=None, seed=1,
                  train=True, overlap_threshold=0.25, train_split=0.8,
                  max_patches_per_bag=None):
@@ -81,17 +81,21 @@ class WheatHeadBags(data_utils.Dataset):
         ])
 
         # Load dataset --------------------------------------------------
-        self.images, self.annotations = self._load_data()
+        self.images, self.annotations, preselected_image_ids = \
+            self._load_data()
 
         # Split into train / test ----------------------------------------
-        all_image_ids = sorted(self.annotations.keys())
-        self.r.shuffle(all_image_ids)
-        split_idx = int(len(all_image_ids) * self.train_split)
+        if preselected_image_ids is None:
+            all_image_ids = sorted(self.annotations.keys())
+            self.r.shuffle(all_image_ids)
+            split_idx = int(len(all_image_ids) * self.train_split)
 
-        if self.train:
-            self.image_ids = all_image_ids[:split_idx]
+            if self.train:
+                self.image_ids = all_image_ids[:split_idx]
+            else:
+                self.image_ids = all_image_ids[split_idx:]
         else:
-            self.image_ids = all_image_ids[split_idx:]
+            self.image_ids = preselected_image_ids
 
         if self.num_bag is not None and self.num_bag < len(self.image_ids):
             self.image_ids = self.image_ids[:self.num_bag]
@@ -108,17 +112,98 @@ class WheatHeadBags(data_utils.Dataset):
         """Try local directory first, then HuggingFace."""
         if os.path.isdir(self.data_dir):
             return self._load_from_local()
-        return self._load_from_huggingface()
+        images, annotations = self._load_from_huggingface()
+        return images, annotations, None
+
+    @staticmethod
+    def _parse_boxes_string(boxes_string):
+        """Parse ``x1 y1 x2 y2;...`` format into ``[x, y, w, h]`` boxes."""
+        if not boxes_string:
+            return []
+
+        boxes = []
+        for box_str in str(boxes_string).split(';'):
+            box_str = box_str.strip()
+            if not box_str:
+                continue
+
+            coords = box_str.split()
+            if len(coords) != 4:
+                continue
+
+            x1, y1, x2, y2 = map(float, coords)
+            boxes.append([x1, y1, max(0.0, x2 - x1), max(0.0, y2 - y1)])
+
+        return boxes
 
     def _load_from_local(self):
-        """Load from the Kaggle-format local directory."""
+        """Load from supported local directory layouts.
+
+        Supported layouts:
+
+        1) Legacy Kaggle layout::
+            data_dir/train.csv
+            data_dir/train/<image_id>.jpg
+
+        2) GWHD 2021 split layout::
+            data_dir/competition_train.csv
+            data_dir/competition_val.csv
+            data_dir/competition_test.csv
+            data_dir/images/<image_name>
+        """
         csv_path = os.path.join(self.data_dir, 'train.csv')
         img_dir = os.path.join(self.data_dir, 'train')
+        split_csv_map = {
+            True: ['competition_train.csv'],
+            False: ['competition_test.csv', 'competition_val.csv']
+        }
+        shared_img_dir = os.path.join(self.data_dir, 'images')
+
+        # New split-based layout: select the requested split directly.
+        if os.path.isdir(shared_img_dir):
+            selected_split_csv = None
+            for split_csv in split_csv_map[self.train]:
+                candidate = os.path.join(self.data_dir, split_csv)
+                if os.path.isfile(candidate):
+                    selected_split_csv = candidate
+                    break
+
+            if selected_split_csv is not None:
+                images = {}
+                annotations = {}
+                image_ids = []
+
+                with open(selected_split_csv, newline='') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        image_name = row.get('image_name') or row.get('image_id')
+                        if not image_name:
+                            continue
+
+                        img_path = os.path.join(shared_img_dir, image_name)
+                        if not os.path.isfile(img_path):
+                            continue
+
+                        if image_name not in annotations:
+                            image_ids.append(image_name)
+                            annotations[image_name] = []
+
+                        images[image_name] = img_path
+
+                        boxes_string = row.get('BoxesString', '')
+                        annotations[image_name].extend(
+                            self._parse_boxes_string(boxes_string)
+                        )
+
+                return images, annotations, image_ids
 
         if not os.path.isfile(csv_path):
             raise FileNotFoundError(
-                f"Annotation CSV not found at {csv_path}. "
-                f"Expected 'train.csv' in {self.data_dir}."
+                f"No supported annotation CSV found in {self.data_dir}. "
+                "Expected either:\n"
+                "  - train.csv (legacy Kaggle layout), or\n"
+                "  - competition_train.csv / competition_val.csv / "
+                "competition_test.csv (GWHD 2021 split layout)."
             )
         if not os.path.isdir(img_dir):
             raise FileNotFoundError(
@@ -147,7 +232,7 @@ class WheatHeadBags(data_utils.Dataset):
                     bbox = ast.literal_eval(bbox_str)
                     annotations[image_id].append(bbox)
 
-        return images, annotations
+            return images, annotations, None
 
     def _load_from_huggingface(self):
         """Attempt to load from HuggingFace ``datasets``."""
