@@ -402,7 +402,8 @@ class WheatHeadBags(data_utils.Dataset):
         An equal number of positive and negative bags is generated:
 
         * **Positive bags** contain a varying number of positive
-          instances (at least one) mixed with negative instances.
+          instances (at least one, up to the full bag length) mixed
+          with negative instances.
         * **Negative bags** contain only negative instances.
 
         The number of instances per bag is drawn from
@@ -423,6 +424,11 @@ class WheatHeadBags(data_utils.Dataset):
                     all_negative.append(tensor_patch)
 
         if not all_positive or not all_negative:
+            import warnings
+            warnings.warn(
+                "mix_bags requires both positive and negative patches "
+                "but one pool is empty. Returning zero bags. Consider "
+                "adjusting overlap_threshold or using more images.")
             return [], [], []
 
         # Determine the number of bags per class (positive / negative).
