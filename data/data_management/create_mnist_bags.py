@@ -11,7 +11,7 @@ import dataset_manager
 # The bags are stored in a H5 file with the bag label (1 if it contains the target number, 0 otherwise),  
 # the indices of the instances in the original dataset and the coordinates of the instances in the pseudo image.
 
-def form_bags(path, target_number, pseudo_image_width, pseudo_image_height, num_bag, stride = 28, seed=0, train=True):
+def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height, num_bag, stride = 28, seed=0, train=True):
     if train:
         loader = datasets.MNIST('../datasets',
                                 train=True,
@@ -56,20 +56,27 @@ def form_bags(path, target_number, pseudo_image_width, pseudo_image_height, num_
         if count > 0 and collected["positive"] < needed["positive"]:
             bag, coords = build_patch_tensor(label_grid, label_to_imgs)
             collected["positive"] += 1
+            sum_collected = collected["positive"] + collected["negative"]
+            dataset_manager.DatasetWriter(path).write('mnist_bags', 
+                                                    f'train_{sum_collected}' if train else f'test_{sum_collected}', 
+                                                    torch.tensor(coords), 
+                                                    label = 1 if count > 0 else 0, 
+                                                    patches=torch.tensor(bag),
+                                                    count = count, 
+                                                    instance_label=label_grid, split='train' if train else 'test')
         elif count == 0 and collected["negative"] < needed["negative"]:
             bag, coords = build_patch_tensor(label_grid, label_to_imgs)
             collected["negative"] += 1
+            sum_collected = collected["positive"] + collected["negative"]
+            dataset_manager.DatasetWriter(path).write('mnist_bags', 
+                                                    f'train_{sum_collected}' if train else f'test_{sum_collected}', 
+                                                    torch.tensor(coords), 
+                                                    label = 0, 
+                                                    patches=torch.tensor(bag),
+                                                    count = count, 
+                                                    instance_label=label_grid, split='train' if train else 'test')
         else:
             pass  
-
-        sum_collected = collected["positive"] + collected["negative"]
-        dataset_manager.DatasetWriter(path).write('mnist_bags', 
-                                                  f'train_{sum_collected}' if train else f'test_{sum_collected}', 
-                                                  torch.tensor(coords), 
-                                                  label = 1 if count > 0 else 0, 
-                                                  patches=torch.tensor(bag),
-                                                  count = count, 
-                                                  instance_label=label_grid, split='train' if train else 'test')
 
 def sample_potts_grid(grid_h, grid_w, n_classes=10, beta=2.0, n_sweeps=50):
     """
@@ -118,7 +125,10 @@ def build_patch_tensor(label_grid, label_to_imgs, tile_size=28):
             patches.append(tile)
             coords.append((i * tile_size, j * tile_size))  # Top-Left-Koordinate des Patches
     
-    return np.stack(patches), coords  # (H*W, 28, 28), [(i, j), ...]
+    patches = np.stack(patches)  # (H*W, 28, 28)
+    patches = np.expand_dims(patches, axis=1)  # (H*W, 1, 28, 28) für CNNs
+
+    return patches, coords  # (H*W, 28, 28), [(i, j), ...]
 
 def get_bag_label(label_grid, target_digit):
     """Zählt Instanzen des Ziel-Digits (Regression) oder: vorhanden? (Klassifikation)"""
@@ -138,5 +148,5 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility (default: 0)')
     args = parser.parse_args() 
 
-    form_bags(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag, args.stride, args.seed, train=True) 
-    form_bags(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.stride, args.seed, train=False)
+    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag, args.stride, args.seed, train=True) 
+    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.stride, args.seed, train=False)

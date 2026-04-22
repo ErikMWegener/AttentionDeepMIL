@@ -28,7 +28,7 @@ class DatasetWriter:
             grp.attrs['count'] = count if count is not None else -1
             grp.attrs['split'] = split
             for k, v in meta.items():
-                grp.attrs[k+3] = v
+                grp.attrs[k] = v
 
 class DatasetReader(torch.utils.data.Dataset):
     def __init__(self, path, dataset_name, split='train'):
@@ -50,8 +50,12 @@ class DatasetReader(torch.utils.data.Dataset):
             patches = torch.from_numpy(grp['patches'][:])
             coords  = torch.from_numpy(grp['coords'][:])
             label   = int(grp.attrs['label'])
-            count   = grp.attrs['count']
-            count   = None if count == -1 else int(count)
-            instance_label = grp.attrs.get('instance_label')
-            instance_label = None if instance_label is None else int(instance_label)
+            count   = int(grp.attrs.get('count', -1))
+            instance_label = grp.get('instance_label')
+            if instance_label is None:
+                # If 'instance_label' dataset doesn't exist, create a placeholder.
+                # The size should match the number of patches.
+                instance_label = torch.full((patches.shape[0],), -1, dtype=torch.int64)
+            else:
+                instance_label = torch.from_numpy(instance_label[:])
         return patches, coords, label, count, instance_label
