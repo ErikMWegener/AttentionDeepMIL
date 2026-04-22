@@ -2,7 +2,7 @@
 
 import csv
 
-from metrics import save_results_to_csv
+from eval.scripts.metrics import save_results_to_csv
 
 
 class TestSaveResultsToCsvCountingAccuracy:

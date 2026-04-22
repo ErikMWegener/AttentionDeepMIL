@@ -5,10 +5,10 @@ import torch
 import torch.optim as optim
 import torch.utils.data as data_utils
 
-from mnist_bags_loader import MnistBags
-from metrics import calculate_metrics, save_results_to_csv
-from model import Attention, GatedAttention
-from wheat_loader import WheatHeadBags
+from data.data_management.mnist_bags_loader import MnistBags
+from eval.scripts.metrics import calculate_metrics, save_results_to_csv
+from models.model import Attention, GatedAttention
+from data.data_management.wheat_loader import WheatHeadBags
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MIL bags Example')
