@@ -21,7 +21,8 @@ class DatasetWriter:
             if patches is not None:
                 grp.create_dataset('patches', data=patches.numpy(),
                                    compression='gzip', compression_opts=4)
-            grp.create_dataset('coords', data=coords.numpy())
+            if coords is not None:
+                grp.create_dataset('coords', data=coords.numpy())
             if instance_label is not None:
                 grp.create_dataset('instance_label', data=instance_label)
             grp.attrs['label'] = label
@@ -48,7 +49,10 @@ class DatasetReader(torch.utils.data.Dataset):
         with h5py.File(self.path, 'r') as f:
             grp = f[self.keys[idx]]
             patches = torch.from_numpy(grp['patches'][:])
-            coords  = torch.from_numpy(grp['coords'][:])
+            if 'coords' in grp:
+                coords = torch.from_numpy(grp['coords'][:])
+            else:
+                coords = torch.empty(patches.shape[0], 0)  # Placeholder if 'coords' dataset doesn't exist
             label   = int(grp.attrs['label'])
             count   = int(grp.attrs.get('count', -1))
             instance_label = grp.get('instance_label')

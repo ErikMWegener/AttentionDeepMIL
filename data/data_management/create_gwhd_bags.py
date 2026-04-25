@@ -1,13 +1,17 @@
 from collections import defaultdict
 from importlib.resources import path
+import os
+from PIL import Image
+from tqdm import tqdm
 
 import torch
 import numpy as np
 import pandas as pd
 from torchvision import datasets, transforms
 import dataset_manager
-import Image
 import argparse
+import sys
+import os
 
 # Read CSV-File for GWHD dataset
 
@@ -18,11 +22,13 @@ def load_metadata(csv_path):
         image_id = row['image_name']
         boxes = []
         for s in row['BoxesString'].split(';'):
+            if s == 'no_box':
+                continue
             if s.strip():
                 x1, y1, x2, y2 = map(int, s.split(' '))
                 boxes.append((x1, y1, x2, y2))
         metadata[image_id] = boxes
-        print(f'{len(metadata)} images found')
+    print(f'{len(metadata)} images found')
     return metadata
 
 # Compute the overlap between a patch and a bounding box 
@@ -44,7 +50,7 @@ def compute_overlap(patch_box, bbox):
 
 # Generate patch list with coordinates, the correspinding image ID and the label for each patch based on the overlap with the bounding boxes
 
-def generate_patch_definitions(metadata, path, patch_size=64, stride=64, overlap_threshold=0.5):
+def generate_patch_definitions(metadata, path, patch_size=28, stride=28, overlap_threshold=0.5):
     positive_patches = []
     negative_patches = []
 
@@ -80,7 +86,13 @@ def fetch_patch_from_image(image_path, coords):
 # Create bags from the patch definitions and write them to an H5 file using the DatasetWriter class. 
 # Each bag corresponds to an image and contains all patches extracted from that image along with their labels.
 
-def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_patches, path, split='train', bag_ratio=0.5, seed=0):
+def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_patches, image_path, output_path, split='train', bag_ratio=0.5, seed=0):
+
+    transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1), # In Graustufen umwandeln
+        transforms.ToTensor(),                      # In einen PyTorch-Tensor umwandeln
+        transforms.Normalize((0.5,), (0.5,))        # Normalisieren (wie bei MNIST üblich)
+    ])
 
     num_pos_bags = int(num_bags * bag_ratio)
     num_neg_bags = num_bags - num_pos_bags
@@ -90,7 +102,7 @@ def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_
     
     # Positive bags with varying number of positive and negative patches
 
-    for i in range(num_pos_bags):
+    for i in tqdm(range(num_pos_bags), desc="Creating positive bags"):
         bag_length = max(1, int(r.normal(mean_bag_len, var_bag_len)))
         num_positive = r.randint(1, bag_length)  # Ensure at least one positive patch
         num_negative = bag_length - num_positive
@@ -108,26 +120,28 @@ def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_
         patches = []
         instance_labels = []
         for instance in instances:
-            patch = fetch_patch_from_image(f'{path}/{instance["image_id"]}', instance["coords"])
-            patches.append(patch)
+            patch = fetch_patch_from_image(f'{image_path}/{instance["image_id"]}', instance["coords"])
+            patch_tensor = transform(patch)
+            patches.append(patch_tensor)
             instance_labels.append(instance['label'])
 
-        dataset_manager.DatasetWriter(path).write('mnist_bags', 
-                                                    f'train_{i}' if split else f'test_{i}', 
+        bag_tensor = torch.stack(patches)
+        dataset_manager.DatasetWriter(output_path).write('gwhd_bags', 
+                                                    f'{split}_{i}' , 
                                                     None, 
                                                     label = 1, 
-                                                    patches=torch.tensor(patches),
+                                                    patches=bag_tensor,
                                                     count = num_positive, 
                                                     instance_label=torch.tensor(instance_labels), split=split)
         
     # Negative bags with only negative patches
-    for i in range(num_neg_bags):
+    for i in tqdm(range(num_neg_bags), desc="Creating negative bags"):
         bag_length = max(1, int(r.normal(mean_bag_len, var_bag_len)))
         
         num_negative = bag_length # All patches in negative bags are negative
 
         neg_idx = r.choice(len(negative_patches), num_negative, replace=True)
-        instances += [negative_patches[i] for i in neg_idx]
+        instances = [negative_patches[i] for i in neg_idx]
 
         order = r.permutation(len(instances))
         instances = [instances[i] for i in order]
@@ -135,29 +149,31 @@ def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_
         patches = []
         instance_labels = []
         for instance in instances:
-            patch = fetch_patch_from_image(f'{path}/{instance["image_id"]}', instance["coords"])
-            patches.append(patch)
+            patch = fetch_patch_from_image(f'{image_path}/{instance["image_id"]}', instance["coords"])
+            patch_tensor = transform(patch)
+            patches.append(patch_tensor)
             instance_labels.append(instance['label'])
 
-        dataset_manager.DatasetWriter(path).write('mnist_bags', 
-                                                    f'train_{i}' if split else f'test_{i}', 
+        bag_tensor = torch.stack(patches)
+        dataset_manager.DatasetWriter(output_path).write('gwhd_bags', 
+                                                    f'{split}_{i+num_pos_bags}', 
                                                     None, 
                                                     label = 0, 
-                                                    patches=torch.tensor(patches),
+                                                    patches=bag_tensor,
                                                     count = 0, 
                                                     instance_label=torch.tensor(instance_labels), split=split)
 
-    print(f'Finished creating {num_bags} bags and saved them to {path}.')
+    print(f'Finished creating {num_bags} bags and saved them to {output_path}.')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create bags for GWHD dataset')
 
-    parser.add_argument('--csv_path', type=str, default='datasets/gwhd_2021/competition_train.csv', help='Path to the CSV file containing image metadata')
-    parser.add_argument('--image_path', type=str, default='datasets/gwhd_2021/images', help='Path to the directory containing the images')
-    parser.add_argument('--output_path  ', type=str, default='datasets/gwhd_2021/gwhd_bags.h5', help='Path to the output H5 file for the bags')
-    parser.add_argument('--num_bags', type=int, default=1000, help='Total number of bags to create')
-    parser.add_argument('--mean_bag_len', type=int, default=10, help='Mean number of instances per bag')
-    parser.add_argument('--var_bag_len', type=int, default=5, help='Variance of the number of instances per bag')
+    parser.add_argument('--csv_path', type=str, default='../datasets/gwhd_2021/competition_train.csv', help='Path to the CSV file containing image metadata')
+    parser.add_argument('--image_path', type=str, default='../datasets/gwhd_2021/images', help='Path to the directory containing the images')
+    parser.add_argument('--output_path', type=str, default='../datasets/bags/gwhd_bags.h5', help='Path to the output H5 file for the bags')
+    parser.add_argument('--num_bags', type=int, default=100, help='Total number of bags to create')
+    parser.add_argument('--mean_bag_len', type=int, default=100, help='Mean number of instances per bag')
+    parser.add_argument('--var_bag_len', type=int, default=10, help='Variance of the number of instances per bag')
     parser.add_argument('--bag_ratio', type=float, default=0.5, help='Ratio of positive to negative bags (default: 0.5)')
     parser.add_argument('--overlap_threshold', type=float, default=0.5, help='Overlap threshold for labeling patches as positive (default: 0.5)')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility (default: 0)') 
@@ -166,7 +182,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     metadata = load_metadata(args.csv_path)
-    positive_patches, negative_patches = generate_patch_definitions(metadata, args.image_path, patch_size=64, stride=64, overlap_threshold=args.overlap_threshold)
-    create_bags(args.num_bags, args.mean_bag_len, args.var_bag_len, positive_patches, negative_patches, args.output_path, split=args.split, bag_ratio=args.bag_ratio, seed=args.seed)   
+    positive_patches, negative_patches = generate_patch_definitions(metadata, args.image_path, patch_size=28, stride=28, overlap_threshold=args.overlap_threshold)
+    create_bags(args.num_bags, args.mean_bag_len, args.var_bag_len, positive_patches, negative_patches, args.image_path, args.output_path, split=args.split, bag_ratio=args.bag_ratio, seed=args.seed)   
 
     print('All done!')

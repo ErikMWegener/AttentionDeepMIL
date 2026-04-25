@@ -32,9 +32,10 @@ parser.add_argument('--model', type=str, default='attention',
                     help='Choose b/w attention and gated_attention')
 parser.add_argument('--results_csv', type=str, default='results.csv', metavar='CSV',
                     help='path to CSV file for logging results (default: results.csv)')
-parser.add_argument('--dataset', type=str, default='mnist_bags.h5', metavar='H5', 
+parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
-
+parser.add_argument('--path', type=str, default='mnist_bags.h5', metavar='H5',
+                    help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -48,11 +49,11 @@ if args.cuda:
 print('Load Train and Test Set')
 loader_kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-train_dataset = data_utils.DataLoader(DatasetReader(args.dataset, dataset_name='mnist_bags', split='train'),
+train_dataset = data_utils.DataLoader(DatasetReader(args.path, dataset_name=args.dataset, split='train'),
                                       batch_size=1, 
                                       shuffle=True,
                                       **loader_kwargs)
-test_dataset = data_utils.DataLoader(DatasetReader(args.dataset, dataset_name='mnist_bags', split='test'),
+test_dataset = data_utils.DataLoader(DatasetReader(args.path, dataset_name=args.dataset, split='test'),
                                      batch_size=1,
                                      shuffle=False,
                                      **loader_kwargs)

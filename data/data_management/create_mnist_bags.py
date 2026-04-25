@@ -5,6 +5,7 @@ import numpy as np
 from torchvision import datasets, transforms
 import dataset_manager
 
+
 # Create bags from MNIST dataset with set bag length and target number.     
 # The bags are formed such that they contain at least one third does not contain instance of the target number.
 # Number of instances in each bag must fit into a quadratical grid to form a pseudo image. 
