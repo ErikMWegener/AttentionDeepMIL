@@ -18,6 +18,8 @@ from models.model import Attention, GatedAttention
 # Get arguments from command line
 parser = argparse.ArgumentParser(description='Testing Atteintion MIL models on datasets loaded from H5 files.')
 
+parser.add_argument('--config', type=str, default='config.yaml', metavar='CONFIG',
+                    help='path to YAML config file (default: config.yaml)')
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 20)')
 parser.add_argument('--lr', type=float, default=0.0005, metavar='LR',
@@ -39,6 +41,21 @@ parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5',
 parser.add_argument('--path', type=str, default='mnist_bags.h5', metavar='H5',
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 
+config_parser = argparse.ArgumentParser(description='Config file parser', add_help=False)
+config_parser.add_argument('--config', type=str, default='config.yaml', metavar='CONFIG')
+config_args, _ = config_parser.parse_known_args()
+
+# Read configuration from YAML file if provided
+if os.path.exists(config_args.config):
+    import yaml
+    with open(config_args.config, 'r') as f:
+        yaml_config = yaml.safe_load(f)
+    # Update default arguments with values from YAML config
+else:
+    yaml_config = {}
+
+parser.set_defaults(**yaml_config)
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -47,8 +64,9 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
     print('\nGPU is ON!')
 
-with mlflow.start_run():
+with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_seed{args.seed}"):
     mlflow.log_params(vars(args))
+    mlflow.log_artifact(args.config)
 
     # Load dataset using DatasetReader
     print('Load Train and Test Set')
@@ -163,7 +181,10 @@ with mlflow.start_run():
                             "precision": metrics['precision'],
                             "recall": metrics['recall'],
                             "f1_score": metrics['f1_score'],
-                            "auc": metrics['auc']})
+                            "auc": metrics['auc'],
+                            "mae": metrics['mae'],
+                            "rmse": metrics['rmse'],
+                            "bias": metrics['bias']})
         
         if args.naive_counting and counting_total > 0:
             counting_accuracy = counting_correct / counting_total
