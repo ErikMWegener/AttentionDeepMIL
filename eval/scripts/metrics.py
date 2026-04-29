@@ -6,7 +6,7 @@ from datetime import datetime
 
 import numpy as np
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
-                             recall_score, roc_auc_score)
+                             recall_score, roc_auc_score, mean_absolute_error, mean_squared_error)
 
 
 def calculate_metrics(y_true, y_pred, y_prob):
@@ -35,12 +35,19 @@ def calculate_metrics(y_true, y_pred, y_prob):
     else:
         auc = float('nan')
 
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    bias = np.mean(y_pred - y_true)
+
     return {
         'accuracy': accuracy,
         'precision': precision,
         'recall': recall,
         'f1_score': f1,
         'auc': auc,
+        'mae': mae,
+        'rmse': rmse,
+        'bias': bias,
     }
 
 
