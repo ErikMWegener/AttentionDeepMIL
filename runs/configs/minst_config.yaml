@@ -1,0 +1,9 @@
+epochs: 20
+lr: 0.0005
+reg: 0.00001 
+model: "attention"
+dataset: "mnist_bags"
+path: "../data/datasets/bags/mnist_bags.h5" 
+seeds: [1, 42, 69]
+naive_counting: true
+results_csv: "../eval/results/mnist_results.csv"
