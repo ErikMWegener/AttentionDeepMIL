@@ -12,8 +12,8 @@ import dataset_manager
 # The bags are stored in a H5 file with the bag label (1 if it contains the target number, 0 otherwise),  
 # the indices of the instances in the original dataset and the coordinates of the instances in the pseudo image.
 
-def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height, num_bag, stride = 28, seed=0, train=True):
-    if train:
+def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height, num_bag, stride = 28, seed=0, split='train'):
+    if split == 'train':
         loader = datasets.MNIST('../datasets',
                                 train=True,
                                 download=True,
@@ -36,50 +36,35 @@ def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height
     # The bags are labeled as positive if they contain at least one instance of the target number, otherwise they are labeled as negative.
     # The bags are stored in a list along with their labels and the indices of the instances in the original dataset.
     # The bags are created until the desired number of bags is reached or the maximum number of attempts is exceeded to avoid infinite loops.
+    
+    beta = 2.0
+    n_sweeps = 30
+    for i in range(num_bag//2):
+        # Generate positive bags
+        label_grid = sample_potts_grid(pseudo_image_width, pseudo_image_height, beta=beta, n_sweeps=n_sweeps, target_number=target_number, negative=False)
+        bag, coords = build_patch_tensor(label_grid, label_to_imgs)
+        dataset_manager.DatasetWriter(path).write('mnist_bags', 
+                                                f'{split}_{i}' , 
+                                                torch.tensor(coords), 
+                                                label = 1, 
+                                                patches=torch.tensor(bag),
+                                                count = get_bag_label(label_grid, target_number), 
+                                                instance_label=label_grid, 
+                                                split=split)
+    # Generate negative bags
+    for i in range(num_bag//2):
+        label_grid = sample_potts_grid(pseudo_image_width, pseudo_image_height, beta=beta, n_sweeps=n_sweeps, target_number=target_number, negative=True)
+        bag, coords = build_patch_tensor(label_grid, label_to_imgs)
+        dataset_manager.DatasetWriter(path).write('mnist_bags', 
+                                                f'{split}_{i + num_bag // 2}', 
+                                                torch.tensor(coords), 
+                                                label = 0, 
+                                                patches=torch.tensor(bag),
+                                                count = get_bag_label(label_grid, target_number), 
+                                                instance_label=label_grid, 
+                                                split=split)
 
-    collected = {"positive": 0, "negative": 0}
-    needed = {"positive": num_bag // 2, "negative": num_bag // 2}
-    attempts = 0
-    max_attempts = num_bag * 10
-
-    while collected ["positive"] < needed["positive"] or collected["negative"] < needed["negative"]:
-        if attempts >= max_attempts:
-            print("Reached maximum number of attempts. Stopping generation.")
-            break
-        attempts += 1
-        beta = 2.0
-        n_sweeps = 30
-        label_grid = sample_potts_grid(pseudo_image_width, pseudo_image_height, beta=beta, n_sweeps=n_sweeps)
-        count = get_bag_label(label_grid, target_number)
-
-        bag, coords = [], []
-
-        if count > 0 and collected["positive"] < needed["positive"]:
-            bag, coords = build_patch_tensor(label_grid, label_to_imgs)
-            collected["positive"] += 1
-            sum_collected = collected["positive"] + collected["negative"]
-            dataset_manager.DatasetWriter(path).write('mnist_bags', 
-                                                    f'train_{sum_collected}' if train else f'test_{sum_collected}', 
-                                                    torch.tensor(coords), 
-                                                    label = 1 if count > 0 else 0, 
-                                                    patches=torch.tensor(bag),
-                                                    count = count, 
-                                                    instance_label=label_grid, split='train' if train else 'test')
-        elif count == 0 and collected["negative"] < needed["negative"]:
-            bag, coords = build_patch_tensor(label_grid, label_to_imgs)
-            collected["negative"] += 1
-            sum_collected = collected["positive"] + collected["negative"]
-            dataset_manager.DatasetWriter(path).write('mnist_bags', 
-                                                    f'train_{sum_collected}' if train else f'test_{sum_collected}', 
-                                                    torch.tensor(coords), 
-                                                    label = 0, 
-                                                    patches=torch.tensor(bag),
-                                                    count = count, 
-                                                    instance_label=label_grid, split='train' if train else 'test')
-        else:
-            pass  
-
-def sample_potts_grid(grid_h, grid_w, n_classes=10, beta=2.0, n_sweeps=50):
+def sample_potts_grid(grid_h, grid_w, n_classes=10, beta=2.0, n_sweeps=50, target_number=9, negative=False):
     """
     Gibbs-Sampling für das Potts-Modell.
     
@@ -111,7 +96,20 @@ def sample_potts_grid(grid_h, grid_w, n_classes=10, beta=2.0, n_sweeps=50):
             probs /= probs.sum()
             
             grid[i, j] = np.random.choice(n_classes, p=probs)
-    
+
+    count = np.sum(grid == target_number)
+    if negative and count > 0:
+        # If a negative bag is desired but the target number is present, replace it with a random other class.
+        mask = (grid == target_number)
+        num_targets = np.sum(mask)
+        valid_classes = [k for k in range(n_classes) if k != target_number]
+        grid[mask] = np.random.choice(valid_classes, size=num_targets)
+    elif not negative and count == 0:
+        # If a positive bag is desired but the target number is not present, replace some random class with the target number.
+        valid_classes = np.unique(grid)
+        random_class = np.random.choice(valid_classes)
+        grid[grid == random_class] = target_number
+
     return grid
 
 def build_patch_tensor(label_grid, label_to_imgs, tile_size=28):
@@ -149,5 +147,6 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility (default: 0)')
     args = parser.parse_args() 
 
-    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag, args.stride, args.seed, train=True) 
-    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.stride, args.seed, train=False)
+    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag, args.stride, args.seed, split='train') 
+    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.stride, args.seed, split='test')
+    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.stride, args.seed, split='validation')
