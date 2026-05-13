@@ -12,7 +12,7 @@ import mlflow
 import mlflow.pytorch
 
 from data.data_management.dataset_manager import DatasetReader
-from eval.scripts.metrics import calculate_metrics, save_results_to_csv
+from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
 from models.model import Attention, GatedAttention
 
 # Get arguments from command line
@@ -183,7 +183,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     val_error /= len(val_dataset)   
 
                     metrics = calculate_metrics(y_true, y_pred, y_prob)
-                    print('Epoch: {}, Val Loss: {:.4f}, Val Error: {:.4f}, Val AUC: {:.4f}'.format(
+                    print('Epoch: {}, Val Loss: {:.4f}, Val Error: {:.4f}, Val AUC: {:.4f}\n'.format(
                         epoch, val_loss, val_error, metrics['auc']))    
 
                     # Log validation metrics to MLflow
@@ -263,12 +263,16 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     metrics['test_error'] = test_error
 
                     if args.naive_counting and len(count_pred) > 0:
-                        counting_accuracy = sum(1 for truth, pred in zip(count_truth, count_pred) if truth == pred) / len(count_pred)
-                        metrics['counting_accuracy'] = counting_accuracy
-                        mlflow.log_metric('counting_accuracy', counting_accuracy)
+                        counting_metrics = calculate_counting_metrics(count_truth, count_pred)
+                        metrics['counting_accuracy'] = counting_metrics['counting_accuracy']
+                        metrics['counting_mae'] = counting_metrics['counting_mae']
+                        metrics['counting_rmse'] = counting_metrics['counting_rmse']
+                        mlflow.log_metric('counting_accuracy', counting_metrics['counting_accuracy'])
                         mlflow.log_metrics({f'count_{i}_truth': truth for i, truth in enumerate(count_truth)})
                         mlflow.log_metrics({f'count_{i}_pred': pred for i, pred in enumerate(count_pred)})
-                        print('Counting Accuracy: {:.4f}'.format(counting_accuracy))
+                        mlflow.log_metrics({"count_mae": counting_metrics['counting_mae'], "count_rmse": counting_metrics['counting_rmse']})
+                        print('Counting Accuracy: {:.4f}, MAE: {:.4f}, RMSE: {:.4f}'.format(
+                            counting_metrics['counting_accuracy'], counting_metrics['counting_mae'], counting_metrics['counting_rmse']))
 
                     return metrics
                 print('Starting training!')
