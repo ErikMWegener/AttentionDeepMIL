@@ -98,13 +98,19 @@ def fetch_patch_from_image(image_path, coords):
 # Create bags from the patch definitions and write them to an H5 file using the DatasetWriter class. 
 # Each bag corresponds to an image and contains all patches extracted from that image along with their labels.
 
-def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_patches, output_path, split='train', bag_ratio=0.5, seed=0):
+def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_patches, output_path, split='train', bag_ratio=0.5, seed=0, grayscale=False):
 
-    transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1), # In Graustufen umwandeln
-        transforms.ToTensor(),                      # In einen PyTorch-Tensor umwandeln
-        transforms.Normalize((0.5,), (0.5,))        # Normalisieren (wie bei MNIST üblich)
-    ])
+    if grayscale:
+        transform = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1), # In Graustufen umwandeln
+            transforms.ToTensor(),                      # In einen PyTorch-Tensor umwandeln
+            transforms.Normalize((0.5,), (0.5,))        # Normalisieren (wie bei MNIST üblich)
+        ])
+    else:
+        transform = transforms.Compose([
+            transforms.ToTensor(),                      # In einen PyTorch-Tensor umwandeln
+            transforms.Normalize((0.5,), (0.5,))        # Normalisieren (wie bei MNIST üblich)
+        ])
 
     num_pos_bags = int(num_bags * bag_ratio)
     num_neg_bags = num_bags - num_pos_bags
@@ -188,6 +194,7 @@ if __name__ == "__main__":
     parser.add_argument('--var_bag_len', type=int, default=10, help='Variance of the number of instances per bag')
     parser.add_argument('--bag_ratio', type=float, default=0.5, help='Ratio of positive to negative bags (default: 0.5)')
     parser.add_argument('--overlap_threshold', type=float, default=0.5, help='Overlap threshold for labeling patches as positive (default: 0.5)')
+    parser.add_argument('--grayscale', action='store_true', default=False, help='Activate grayscale images')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility (default: 0)') 
     args = parser.parse_args()
 
@@ -209,7 +216,8 @@ if __name__ == "__main__":
                 args.output_path, 
                 split='train', 
                 bag_ratio=args.bag_ratio, 
-                seed=args.seed) 
+                seed=args.seed,
+                grayscale=args.grayscale) 
 
     # Create validation bags  
     create_bags(args.num_bags[1], 
@@ -220,7 +228,8 @@ if __name__ == "__main__":
                 args.output_path, 
                 split='validation', 
                 bag_ratio=args.bag_ratio, 
-                seed=args.seed)
+                seed=args.seed,
+                grayscale=args.grayscale)
     
     # Create test bags
     create_bags(args.num_bags[2], 
@@ -231,7 +240,8 @@ if __name__ == "__main__":
                 args.output_path, 
                 split='test', 
                 bag_ratio=args.bag_ratio, 
-                seed=args.seed)
+                seed=args.seed,
+                grayscale=args.grayscale)
 
  
 
