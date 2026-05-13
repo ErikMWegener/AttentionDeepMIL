@@ -50,6 +50,28 @@ def calculate_metrics(y_true, y_pred, y_prob):
         'bias': bias,
     }
 
+def calculate_counting_metrics(count_truth, count_pred):
+    """Calculate counting accuracy, MAE, and RMSE.
+
+    Args:
+        count_truth (array-like): Ground-truth counts (non-negative integers).
+        count_pred (array-like): Predicted counts (non-negative integers).
+
+    Returns:
+        dict: A dictionary containing the computed counting metrics.
+    """
+    count_truth = np.array(count_truth)
+    count_pred = np.array(count_pred)
+
+    counting_accuracy = sum(1 for truth, pred in zip(count_truth, count_pred) if truth == pred) / len(count_pred)
+    counting_mae = mean_absolute_error(count_truth, count_pred)
+    counting_rmse = np.sqrt(mean_squared_error(count_truth, count_pred))
+
+    return {
+        'counting_accuracy': counting_accuracy,
+        'counting_mae': counting_mae,
+        'counting_rmse': counting_rmse
+    }
 
 def save_results_to_csv(filepath, config, metrics):
     """Append a run's configuration and metrics to a CSV file.
