@@ -12,7 +12,7 @@ import dataset_manager
 # The bags are stored in a H5 file with the bag label (1 if it contains the target number, 0 otherwise),  
 # the indices of the instances in the original dataset and the coordinates of the instances in the pseudo image.
 
-def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height, num_bag, stride = 28, seed=0, split='train'):
+def form_bags_to_h5(path, dataset_name, target_number, pseudo_image_width, pseudo_image_height, num_bag, beta = 1.0,stride = 28, seed=0, split='train'):
     if split == 'train':
         loader = datasets.MNIST('../datasets',
                                 train=True,
@@ -37,13 +37,12 @@ def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height
     # The bags are stored in a list along with their labels and the indices of the instances in the original dataset.
     # The bags are created until the desired number of bags is reached or the maximum number of attempts is exceeded to avoid infinite loops.
     
-    beta = 2.0
     n_sweeps = 30
     for i in range(num_bag//2):
         # Generate positive bags
         label_grid = sample_potts_grid(pseudo_image_width, pseudo_image_height, beta=beta, n_sweeps=n_sweeps, target_number=target_number, negative=False)
         bag, coords = build_patch_tensor(label_grid, label_to_imgs)
-        dataset_manager.DatasetWriter(path).write('mnist_bags', 
+        dataset_manager.DatasetWriter(path).write(dataset_name, 
                                                 f'{split}_{i}' , 
                                                 torch.tensor(coords), 
                                                 label = 1, 
@@ -55,7 +54,7 @@ def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height
     for i in range(num_bag//2):
         label_grid = sample_potts_grid(pseudo_image_width, pseudo_image_height, beta=beta, n_sweeps=n_sweeps, target_number=target_number, negative=True)
         bag, coords = build_patch_tensor(label_grid, label_to_imgs)
-        dataset_manager.DatasetWriter(path).write('mnist_bags', 
+        dataset_manager.DatasetWriter(path).write(dataset_name, 
                                                 f'{split}_{i + num_bag // 2}', 
                                                 torch.tensor(coords), 
                                                 label = 0, 
@@ -64,7 +63,7 @@ def form_bags_to_h5(path, target_number, pseudo_image_width, pseudo_image_height
                                                 instance_label=label_grid, 
                                                 split=split)
 
-def sample_potts_grid(grid_h, grid_w, n_classes=10, beta=2.0, n_sweeps=50, target_number=9, negative=False):
+def sample_potts_grid(grid_h, grid_w, n_classes=10, beta=1.0, n_sweeps=50, target_number=9, negative=False):
     """
     Gibbs-Sampling für das Potts-Modell.
     
@@ -139,14 +138,16 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Generate MNIST bags for MIL.')
     parser.add_argument('--path', type=str, default='mnist_bags.h5', help='Path to save the generated bags (default: mnist_bags.h5)')
+    parser.add_argument('--dataset_name', type=str, default='mnist_bags', help='Name of the dataset in the H5 file (default: mnist_bags)')
     parser.add_argument('--target_number', type=int, default=9, help='Target number for positive bags (default: 9)')
     parser.add_argument('--pseudo_image_width', type=int, default=10, help='Width of the pseudo image (default: 10)')
     parser.add_argument('--pseudo_image_height', type=int, default=10, help='Height of the pseudo image (default: 10)')
+    parser.add_argument('--beta', type=float, default=1.0, help='Beta parameter for Potts model sampling (default: 1.0)')
     parser.add_argument('--num_bag', type=int, default=100, help='Total number of bags to generate (default: 100)')
     parser.add_argument('--stride', type=int, default=28, help='Stride for placing instances in the pseudo  image (default: 28)')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility (default: 0)')
     args = parser.parse_args() 
 
-    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag, args.stride, args.seed, split='train') 
-    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.stride, args.seed, split='test')
-    form_bags_to_h5(args.path, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.stride, args.seed, split='validation')
+    form_bags_to_h5(args.path, args.dataset_name, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag, args.beta, args.stride, args.seed, split='train') 
+    form_bags_to_h5(args.path, args.dataset_name, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.beta, args.stride, args.seed, split='test')
+    form_bags_to_h5(args.path, args.dataset_name, args.target_number, args.pseudo_image_width, args.pseudo_image_height, args.num_bag // 10, args.beta, args.stride, args.seed, split='validation')
