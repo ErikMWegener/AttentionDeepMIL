@@ -34,12 +34,12 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--model', type=str, default='attention', 
                     help='Choose b/w attention and gated_attention')
-parser.add_argument('--results_csv', type=str, default='results.csv', metavar='CSV',
-                    help='path to CSV file for logging results (default: results.csv)')
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--path', type=str, default='mnist_bags.h5', metavar='H5',
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
+parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
+                    help='name of the MLflow experiment (default: default)')
 
 config_parser = argparse.ArgumentParser(description='Config file parser', add_help=False)
 config_parser.add_argument('--config', type=str, default='config.yaml', metavar='CONFIG')
@@ -59,13 +59,16 @@ parser.set_defaults(**yaml_config)
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
+if args.exp_name:
+    mlflow.set_experiment(args.exp_name)
+else:
+    experiment_name = f"{args.model}_{args.dataset}"
+    mlflow.set_experiment(experiment_name)
+
 # Starting partent MLflow run to log parameters and artifacts common to all seeds
 with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}") as parent_run:
     mlflow.log_params(vars(args))
     mlflow.log_artifact(args.config)
-
-    experiment_name = f"{args.model}_{args.dataset}"
-    mlflow.set_experiment(experiment_name)
 
     mlflow.set_tags({
         "model": args.model,
