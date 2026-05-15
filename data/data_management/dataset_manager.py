@@ -63,3 +63,85 @@ class DatasetReader(torch.utils.data.Dataset):
             else:
                 instance_label = torch.from_numpy(instance_label[:])
         return patches, coords, label, count, instance_label
+    
+    def analyze_count_distribution(self):
+        """
+        Analysiert die Verteilung von count-Werten im Dataset.
+        
+        Args:
+            split: Optional - 'train', 'validation', 'test'. 
+                Wenn None, werden alle Splits berücksichtigt.
+        
+        Returns:
+            dict mit detaillierten Statistiken
+        """
+        counts = []
+        
+        with h5py.File(self.path, 'r') as f:
+            # Bestimme Dataset-Namen aus den Keys
+            if not self.keys:
+                return {"error": "No data found in this split"}
+            
+            # Extrahiere Dataset-Namen aus dem ersten Key
+            dataset_name = self.keys[0].split('/')[0]
+            dataset_group = f[dataset_name]
+            
+            # Wenn kein Split gefiltert werden soll, lese alle
+            if self.split is None:
+                for key in dataset_group:
+                    grp = dataset_group[key]
+                    count = grp.attrs.get('count', -1)
+                    if count > 0:
+                        counts.append(count)
+            else:
+                # Nutze bereits gefilterte Keys vom split
+                for key in self.keys:
+                    grp = f[key]
+                    count = grp.attrs.get('count', -1)
+                    if count > 0:
+                        counts.append(count)
+        
+        if not counts:
+            return {"error": "No valid counts found"}
+        
+        counts = np.array(counts)
+        
+        return {
+            "total_samples": len(counts),
+            "mean": float(np.mean(counts)),
+            "median": float(np.median(counts)),
+            "std": float(np.std(counts)),
+            "min": int(np.min(counts)),
+            "max": int(np.max(counts)),
+            "q25": float(np.percentile(counts, 25)),
+            "q75": float(np.percentile(counts, 75)),
+            "histogram": self._get_histogram(counts),
+            "all_counts": counts.tolist()
+        }
+
+    def _get_histogram(self, counts, bins=100):
+        """Erstellt ein Histogram der count-Verteilung"""
+        hist, bin_edges = np.histogram(counts, bins=bins)
+        return {
+            "frequencies": hist.tolist(),
+            "bin_edges": bin_edges.tolist()
+        }
+
+    def print_count_distribution(self):
+        """Gibt eine schöne Zusammenfassung der Verteilung aus"""
+        stats = self.analyze_count_distribution()
+        
+        if "error" in stats:
+            print(stats["error"])
+            return
+        
+        print(f"\n{'='*50}")
+        print(f"Count Distribution ({self.split} split)")
+        print(f"{'='*50}")
+        print(f"Total samples: {stats['total_samples']}")
+        print(f"Mean: {stats['mean']:.2f}")
+        print(f"Median: {stats['median']:.2f}")
+        print(f"Std Dev: {stats['std']:.2f}")
+        print(f"Range: [{stats['min']}, {stats['max']}]")
+        print(f"Quartiles: Q25={stats['q25']:.2f}, Q75={stats['q75']:.2f}")
+        print(f"{'='*50}\n")
