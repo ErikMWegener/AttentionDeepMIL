@@ -31,6 +31,15 @@ class DatasetWriter:
             for k, v in meta.items():
                 grp.attrs[k] = v
 
+    def delete_dataset(self, dataset_name):
+        with h5py.File(self.path, 'a') as f:
+            if dataset_name in f:
+                del f[dataset_name]
+                print(f"Dataset '{dataset_name}' wurde erfolgreich gelöscht.")
+            else:
+                print(f"Dataset '{dataset_name}' nicht gefunden.")
+
+
 class DatasetReader(torch.utils.data.Dataset):
     def __init__(self, path, dataset_name, split='train'):
         self.path = path
