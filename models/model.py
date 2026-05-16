@@ -4,19 +4,20 @@ import torch.nn.functional as F
 
 
 class Attention(nn.Module):
-    def __init__(self):
+    def __init__(self, in_channels=1, sigmoid_attention=False):
         super(Attention, self).__init__()
         self.M = 500
         self.L = 128
         self.ATTENTION_BRANCHES = 1
+        self.sigmoid_attention = sigmoid_attention
 
         self.feature_extractor_part1 = nn.Sequential(
-            nn.Conv2d(1, 20, kernel_size=5),
+            nn.Conv2d(in_channels, 20, kernel_size=5),
             nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(20, 50, kernel_size=5),
             nn.ReLU(),
-            nn.MaxPool2d(2, stride=2)
+            nn.AdaptiveMaxPool2d((4, 4))
         )
 
         self.feature_extractor_part2 = nn.Sequential(
@@ -45,10 +46,18 @@ class Attention(nn.Module):
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
         A = torch.transpose(A, 1, 0)  # ATTENTION_BRANCHESxK
-        A = F.softmax(A, dim=1)  # softmax over K
+        if self.sigmoid_attention:
+            A = F.sigmoid(A)  # sigmoid over K
+        else:
+            A = F.softmax(A, dim=1)  # softmax over K
 
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
 
+        if self.sigmoid_attention:
+            attention_sum = torch.sum(A, dim=1, keepdim=True) + 1e-6 
+            Z = Z/attention_sum
+
+        
         Y_prob = self.classifier(Z)
         Y_hat = torch.ge(Y_prob, 0.5).float()
 
@@ -90,19 +99,20 @@ class Attention(nn.Module):
         return count, A
 
 class GatedAttention(nn.Module):
-    def __init__(self):
+    def __init__(self, in_channels=1, sigmoid_attention=False):
         super(GatedAttention, self).__init__()
         self.M = 500
         self.L = 128
         self.ATTENTION_BRANCHES = 1
+        self.sigmoid_attention = sigmoid_attention
 
         self.feature_extractor_part1 = nn.Sequential(
-            nn.Conv2d(1, 20, kernel_size=5),
+            nn.Conv2d(in_channels, 20, kernel_size=5),
             nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(20, 50, kernel_size=5),
             nn.ReLU(),
-            nn.MaxPool2d(2, stride=2)
+            nn.AdaptiveMaxPool2d((4, 4))
         )
 
         self.feature_extractor_part2 = nn.Sequential(
@@ -138,9 +148,16 @@ class GatedAttention(nn.Module):
         A_U = self.attention_U(H)  # KxL
         A = self.attention_w(A_V * A_U) # element wise multiplication # KxATTENTION_BRANCHES
         A = torch.transpose(A, 1, 0)  # ATTENTION_BRANCHESxK
-        A = F.softmax(A, dim=1)  # softmax over K
+        if self.sigmoid_attention:
+            A = F.sigmoid(A)  # sigmoid over K
+        else:
+            A = F.softmax(A, dim=1)  # softmax over K
 
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
+
+        if self.sigmoid_attention:
+            K = H.size(0) # Anzahl der Patches in der aktuellen Bag
+            Z = Z / K
 
         Y_prob = self.classifier(Z)
         Y_hat = torch.ge(Y_prob, 0.5).float()

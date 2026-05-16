@@ -40,6 +40,10 @@ parser.add_argument('--path', type=str, default='mnist_bags.h5', metavar='H5',
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
                     help='name of the MLflow experiment (default: default)')
+parser.add_argument('--sigmoid_attention', action='store_true', default=False,
+                    help='use sigmoid instead of softmax for attention weights')
+parser.add_argument('--rgb', action='store_true', default=False,
+                    help='use RGB input instead of grayscale')
 
 config_parser = argparse.ArgumentParser(description='Config file parser', add_help=False)
 config_parser.add_argument('--config', type=str, default='config.yaml', metavar='CONFIG')
@@ -66,7 +70,7 @@ else:
     mlflow.set_experiment(experiment_name)
 
 # Starting partent MLflow run to log parameters and artifacts common to all seeds
-with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}") as parent_run:
+with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_sigmoid{args.sigmoid_attention}") as parent_run:
     mlflow.log_params(vars(args))
     mlflow.log_artifact(args.config)
 
@@ -112,9 +116,9 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
 
                 print('Initialize model')
                 if args.model == 'attention':
-                    model = Attention()
+                    model = Attention(in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
                 elif args.model == 'gated_attention':
-                    model = GatedAttention()
+                    model = GatedAttention(in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
                 if args.cuda:
                     model.cuda()
 
