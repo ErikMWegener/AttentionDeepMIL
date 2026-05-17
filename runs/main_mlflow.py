@@ -10,6 +10,7 @@ import torch
 import torch.utils.data as data_utils
 import mlflow
 import mlflow.pytorch
+import matplotlib.pyplot as plt
 
 from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
@@ -237,7 +238,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                             y_prob.append(Y_prob.cpu().item())
 
                             if args.naive_counting:
-                                if predicted_label.cpu().item() == bag_label.cpu().item():
+                                if predicted_label.cpu().item() == 1:  # Nur zählen, wenn die Vorhersage positiv ist
                                     predicted_count, _ = model.count_positive_instances(patches)
                                 else:
                                     predicted_count = 0
@@ -275,8 +276,28 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                         metrics['counting_mae'] = counting_metrics['counting_mae']
                         metrics['counting_rmse'] = counting_metrics['counting_rmse']
                         mlflow.log_metric('counting_accuracy', counting_metrics['counting_accuracy'])
-                        mlflow.log_metrics({f'count_{i}_truth': truth for i, truth in enumerate(count_truth)})
-                        mlflow.log_metrics({f'count_{i}_pred': pred for i, pred in enumerate(count_pred)})
+
+                        clean_truth = [int(c[0].item()) if isinstance(c, list) and torch.is_tensor(c[0]) 
+                                                        else int(c.item()) if torch.is_tensor(c) else int(c) for c in count_truth]
+
+                        clean_pred = [int(p.item()) if torch.is_tensor(p) else int(p) for p in count_pred]
+
+                        table_data =  {"Truth": clean_truth, "Predicted": clean_pred}
+                        mlflow.log_table(table_data, artifact_file="counting_results.json")
+
+                        fig, ax = plt.subplots(figsize=(6, 6))
+                        ax.scatter(clean_truth, clean_pred, alpha=0.6, edgecolors='w')
+
+                        max_val = max(max(clean_truth), max(clean_pred))
+                        ax.plot([0, max_val], [0, max_val], 'r--') 
+
+                        ax.set_xlabel("True Count")
+                        ax.set_ylabel("Predicted Count")
+                        ax.set_title("Count Truth vs. Prediction")
+
+                        mlflow.log_figure(fig, "counting_plot.png")
+                        plt.close(fig) 
+
                         mlflow.log_metrics({"count_mae": counting_metrics['counting_mae'], "count_rmse": counting_metrics['counting_rmse']})
                         print('Counting Accuracy: {:.4f}, MAE: {:.4f}, RMSE: {:.4f}'.format(
                             counting_metrics['counting_accuracy'], counting_metrics['counting_mae'], counting_metrics['counting_rmse']))
@@ -292,6 +313,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                 
                 all_metrics.append(metrics)
                 mlflow.pytorch.log_model(model, "model")  # Log the model to MLflow
+
 
         if all_metrics:
             print("\nAggregating metrics across seeds...")
