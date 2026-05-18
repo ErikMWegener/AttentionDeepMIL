@@ -11,6 +11,8 @@ import torch.utils.data as data_utils
 import mlflow
 import mlflow.pytorch
 import matplotlib.pyplot as plt
+import yaml
+
 
 from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
@@ -19,8 +21,8 @@ from models.model import Attention, GatedAttention
 # Get arguments from command line
 parser = argparse.ArgumentParser(description='Testing Atteintion MIL models on datasets loaded from H5 files.')
 
-parser.add_argument('--config', type=str, default='config.yaml', metavar='CONFIG',
-                    help='path to YAML config file (default: config.yaml)')
+parser.add_argument('--config', type=str, default=None, metavar='CONFIG',
+                    help='path to YAML config file (default: None)')
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 20)')
 parser.add_argument('--lr', type=float, default=0.0005, metavar='LR',
@@ -37,7 +39,7 @@ parser.add_argument('--model', type=str, default='attention',
                     help='Choose b/w attention and gated_attention')
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
-parser.add_argument('--path', type=str, default='mnist_bags.h5', metavar='H5',
+parser.add_argument('--path', type=str, default='../data/datasets/bags/mnist_bags.h5', metavar='H5',
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
                     help='name of the MLflow experiment (default: default)')
@@ -47,33 +49,43 @@ parser.add_argument('--rgb', action='store_true', default=False,
                     help='use RGB input instead of grayscale')
 
 config_parser = argparse.ArgumentParser(description='Config file parser', add_help=False)
-config_parser.add_argument('--config', type=str, default='config.yaml', metavar='CONFIG')
+config_parser.add_argument('--config', type=str, default=None, metavar='CONFIG')
 config_args, _ = config_parser.parse_known_args()
 
 # Read configuration from YAML file if provided
-if os.path.exists(config_args.config):
-    import yaml
-    with open(config_args.config, 'r') as f:
-        yaml_config = yaml.safe_load(f)
-    # Update default arguments with values from YAML config
-else:
-    yaml_config = {}
+if config_args.config is not None:
+    if os.path.exists(config_args.config):
+        print(f"Loading configuration from {config_args.config}")
+        with open(config_args.config, 'r') as f:
+            yaml_config = yaml.safe_load(f)
+        # Update default arguments with values from YAML config
+        parser.set_defaults(**yaml_config)
 
-parser.set_defaults(**yaml_config)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
+if config_args.config is None:
+    print(f"No config file provided. Using default arguments and command line overrides.")
+    args_dict = vars(args)
+    config_filename = f"configs/{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_sigmoid{args.sigmoid_attention}_config.yaml"
+    with open(config_filename, 'w') as f:
+        yaml.dump(args_dict, f, default_flow_style=False)
+    print(f"Run configuration saved to {config_filename}")
+
 if args.exp_name:
     mlflow.set_experiment(args.exp_name)
-else:
-    experiment_name = f"{args.model}_{args.dataset}"
-    mlflow.set_experiment(experiment_name)
+# else:
+#     experiment_name = f"{args.model}_{args.dataset}"
+#     mlflow.set_experiment(experiment_name)
 
 # Starting partent MLflow run to log parameters and artifacts common to all seeds
 with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_sigmoid{args.sigmoid_attention}") as parent_run:
     mlflow.log_params(vars(args))
-    mlflow.log_artifact(args.config)
+    if config_args.config is not None:
+        mlflow.log_artifact(config_args.config)
+    if config_args.config is None:
+        mlflow.log_artifact(config_filename)
 
     mlflow.set_tags({
         "model": args.model,
