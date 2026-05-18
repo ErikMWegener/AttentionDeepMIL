@@ -62,7 +62,40 @@ def compute_overlap(patch_box, bbox):
 
 # Generate patch list with coordinates, the correspinding image ID and the label for each patch based on the overlap with the bounding boxes
 
-def generate_patch_definitions(metadata, patch_size=28, stride=28, overlap_threshold=0.5):
+def extract_box_patches(bbox, img_w, img_h, patch_size=28, stride=28, threshold=1.0):
+    x1, y1, x2, y2 = bbox
+
+    box_h = y2 - y1
+    box_w = x2 - x1
+
+    center_x = x1 + box_w // 2
+    center_y = y1 + box_h // 2
+
+    num_patch_in_width = max(1, int(box_w * (1 + 1 - threshold) / (stride)))
+    num_patch_in_height = max(1, int(box_h * (1 + 1 - threshold) / (stride)))
+
+    start_x = max(0, center_x - (num_patch_in_width * stride) // 2)
+    start_y = max(0, center_y - (num_patch_in_height * stride) // 2)
+    
+    if start_x + num_patch_in_width * stride > img_w:
+        start_x = img_w - num_patch_in_width * stride - 1
+    if start_y + num_patch_in_height * stride > img_h:
+        start_y = img_h - num_patch_in_height * stride - 1
+    coords = []
+
+    for y in range(min(start_y, img_h - patch_size - 1), min(img_h - 1, start_y + num_patch_in_height * stride), stride):
+        if y + patch_size > img_h:
+            break
+        for x in range(min(start_x, img_w - patch_size - 1), min(img_w - 1, start_x + num_patch_in_width * stride), stride):
+            if x + patch_size > img_w:
+                break
+            patch_coords = (x, y, x + patch_size, y + patch_size)
+            
+            coords.append(patch_coords)
+
+    return coords
+
+def generate_patch_definitions(metadata, patch_size=28, stride=28, dense=False, overlap_threshold=0.5):
     positive_patches = []
     negative_patches = []
 
@@ -78,14 +111,23 @@ def generate_patch_definitions(metadata, patch_size=28, stride=28, overlap_thres
                 patch_label = 0
                 for bbox in boxes:
                     overlap = compute_overlap(patch_coords, bbox)
-                    if overlap >= overlap_threshold:
+                    if dense and overlap > 0:
+                        patch_label = 1
+                    elif overlap >= overlap_threshold:
                         patch_label = 1
                         break
-                if patch_label == 1:
+                if not dense and patch_label == 1:
                     positive_patches.append({'image_id': image_id, 'coords': patch_coords, 'label': patch_label})
                 else:
                     negative_patches.append({'image_id': image_id, 'coords': patch_coords, 'label': patch_label})
-    
+
+        if dense:
+
+            for bbox in boxes:
+                dense_coords = extract_box_patches(bbox, img_w, img_h, patch_size, stride, threshold=overlap_threshold)
+                for patch_coords in dense_coords:
+                    positive_patches.append({'image_id': image_id, 'coords': patch_coords, 'label': 1})
+
     print(f'Generated {len(positive_patches)} positive patches and {len(negative_patches)} negative patches.')
     
     return positive_patches, negative_patches
@@ -98,7 +140,7 @@ def fetch_patch_from_image(image_path, coords):
 # Create bags from the patch definitions and write them to an H5 file using the DatasetWriter class. 
 # Each bag corresponds to an image and contains all patches extracted from that image along with their labels.
 
-def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_patches, output_path, split='train', bag_ratio=0.5, seed=0, grayscale=False):
+def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_patches, output_path, dataset_name='gwhd_bags', split='train', bag_ratio=0.5, seed=0, grayscale=False):
 
     if grayscale:
         transform = transforms.Compose([
@@ -144,7 +186,7 @@ def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_
             instance_labels.append(instance['label'])
 
         bag_tensor = torch.stack(patches)
-        dataset_manager.DatasetWriter(output_path).write('gwhd_bags', 
+        dataset_manager.DatasetWriter(output_path).write(dataset_name, 
                                                     f'{split}_{i}' , 
                                                     None, 
                                                     label = 1, 
@@ -174,7 +216,7 @@ def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_
             instance_labels.append(instance['label'])
 
         bag_tensor = torch.stack(patches)
-        dataset_manager.DatasetWriter(output_path).write('gwhd_bags', 
+        dataset_manager.DatasetWriter(output_path).write(dataset_name, 
                                                     f'{split}_{i+num_pos_bags}', 
                                                     None, 
                                                     label = 0, 
@@ -189,17 +231,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create bags for GWHD dataset')
 
     parser.add_argument('--output_path', type=str, default='../datasets/bags/gwhd_bags.h5', help='Path to the output H5 file for the bags')
+    parser.add_argument('--dataset_name', type=str, default='gwhd_bags', help='Name of the dataset to create within the H5 file')
     parser.add_argument('--num_bags', type=int, nargs='+', default=[100,10,10], help='Total number of bags to create')
     parser.add_argument('--mean_bag_len', type=int, default=100, help='Mean number of instances per bag')
     parser.add_argument('--var_bag_len', type=int, default=10, help='Variance of the number of instances per bag')
     parser.add_argument('--bag_ratio', type=float, default=0.5, help='Ratio of positive to negative bags (default: 0.5)')
+    parser.add_argument('--patch_size', type=int, default=28, help='Size of the patches to extract from the images (default: 28)')
     parser.add_argument('--overlap_threshold', type=float, default=0.5, help='Overlap threshold for labeling patches as positive (default: 0.5)')
     parser.add_argument('--grayscale', action='store_true', default=False, help='Activate grayscale images')
+    parser.add_argument('--dense', action='store_true', default=False, help='Activate dense patch generation (label all patches with any overlap as positive)')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility (default: 0)') 
     args = parser.parse_args()
 
     metadata = load_metadata(args.seed if args.seed is not None else 0)
-    positive_patches, negative_patches = generate_patch_definitions(metadata, patch_size=28, stride=28, overlap_threshold=args.overlap_threshold)
+    positive_patches, negative_patches = generate_patch_definitions(metadata, patch_size=args.patch_size, stride=args.patch_size, overlap_threshold=args.overlap_threshold)
     
     train_pos_index = int(len(positive_patches) * args.num_bags[0] / sum(args.num_bags))
     train_neg_index = int(len(negative_patches) * args.num_bags[0] / sum(args.num_bags))
@@ -214,6 +259,7 @@ if __name__ == "__main__":
                 positive_patches[:train_pos_index], 
                 negative_patches[:train_neg_index], 
                 args.output_path, 
+                args.dataset_name,
                 split='train', 
                 bag_ratio=args.bag_ratio, 
                 seed=args.seed,
@@ -226,6 +272,7 @@ if __name__ == "__main__":
                 positive_patches[train_pos_index:train_pos_index+val_pos_index], 
                 negative_patches[train_neg_index:train_neg_index+val_neg_index], 
                 args.output_path, 
+                args.dataset_name,
                 split='validation', 
                 bag_ratio=args.bag_ratio, 
                 seed=args.seed,
@@ -238,6 +285,7 @@ if __name__ == "__main__":
                 positive_patches[train_pos_index+val_pos_index:], 
                 negative_patches[train_neg_index+val_neg_index:], 
                 args.output_path, 
+                args.dataset_name,
                 split='test', 
                 bag_ratio=args.bag_ratio, 
                 seed=args.seed,
