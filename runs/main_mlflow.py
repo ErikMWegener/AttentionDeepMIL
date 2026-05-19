@@ -97,6 +97,10 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
     })
 
     all_metrics = []
+
+    all_count_truth = []
+    all_count_pred = []
+    all_count_seed = []
     # Iterate over each seed
     try:
         for seed in args.seeds:
@@ -313,16 +317,23 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                         mlflow.log_metrics({"count_mae": counting_metrics['counting_mae'], "count_rmse": counting_metrics['counting_rmse']})
                         print('Counting Accuracy: {:.4f}, MAE: {:.4f}, RMSE: {:.4f}'.format(
                             counting_metrics['counting_accuracy'], counting_metrics['counting_mae'], counting_metrics['counting_rmse']))
-
-                    return metrics
+                        return metrics, clean_truth, clean_pred
+                    
+                    return metrics, [], []
+                
                 print('Starting training!')
                 for epoch in range(1, args.epochs + 1):
                     train(epoch)
                     validate(epoch)
                     
                 print('Starting testing!')
-                metrics = test()
+                metrics, seed_truth, seed_pred = test()
                 
+                if seed_truth and seed_pred:
+                    all_count_truth.extend(seed_truth)
+                    all_count_pred.extend(seed_pred)
+                    all_count_seed.extend([seed] * len(seed_truth))
+
                 all_metrics.append(metrics)
                 mlflow.pytorch.log_model(model, "model")  # Log the model to MLflow
 
@@ -339,6 +350,47 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     mlflow.log_metric(f'{key}_mean', mean_value)
                     mlflow.log_metric(f'{key}_std', std_value)
                     print(f"{key}: Mean = {mean_value:.4f}, Std = {std_value:.4f}")
+            
+            if all_count_truth and all_count_pred:
+                print("Logging aggregated counting artifacts...")
+                
+                parent_table = {
+                    "Seed": all_count_seed,
+                    "Truth": all_count_truth,
+                    "Predicted": all_count_pred
+                }
+                mlflow.log_table(parent_table, artifact_file="aggregated_counting_results.json")
+                
+                fig, ax = plt.subplots(figsize=(8, 8))
+
+                colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow', 'black', 'brown']
+                
+                unique_seeds = sorted(set(all_count_seed))
+                for i, seed in enumerate(unique_seeds):
+                    seed_truth = [all_count_truth[i] for i, s in enumerate(all_count_seed) if s == seed]
+                    seed_pred = [all_count_pred[i] for i, s in enumerate(all_count_seed) if s == seed]
+                    
+                    # Nimm die entsprechende Farbe (modulo-Operator falls mehr Seeds als Farben existieren)
+                    color = colors[i % len(colors)]
+                    
+                    ax.scatter(
+                        seed_truth, seed_pred, 
+                        color=color, 
+                        label=f"Seed {seed}",
+                        alpha=0.6, edgecolors='w'
+                    )
+                
+                max_val = max(max(all_count_truth), max(all_count_pred))
+                ax.plot([0, max_val], [0, max_val], 'r--', label="Perfect Prediction") 
+                
+                ax.set_xlabel("True Count")
+                ax.set_ylabel("Predicted Count")
+                ax.set_title("Aggregated Count: Truth vs. Prediction (All Seeds)")
+                ax.legend()
+                
+                mlflow.log_figure(fig, "aggregated_counting_plot.png")
+                plt.close(fig)
+
     except Exception as e:
         print(f"An error occurred: {e}")
         mlflow.log_param('error_message', str(e))
