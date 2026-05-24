@@ -10,6 +10,7 @@ import torch
 import torch.utils.data as data_utils
 import mlflow
 import mlflow.pytorch
+import mlflow.data as mlfdata
 import matplotlib.pyplot as plt
 import yaml
 import pandas as pd
@@ -90,6 +91,12 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
     if config_args.config is None:
         mlflow.log_artifact(config_filename)
 
+    mlflow.log_input(
+        mlfdata.from_path(
+            path=args.path,
+            name=args.dataset,
+        )
+    )
     mlflow.set_tags({
         "model": args.model,
         "dataset": args.dataset,
