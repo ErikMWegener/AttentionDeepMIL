@@ -12,6 +12,7 @@ import mlflow
 import mlflow.pytorch
 import matplotlib.pyplot as plt
 import yaml
+import pandas as pd
 
 
 from data.data_management.dataset_manager import DatasetReader
@@ -45,6 +46,8 @@ parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
                     help='name of the MLflow experiment (default: default)')
 parser.add_argument('--sigmoid_attention', action='store_true', default=False,
                     help='use sigmoid instead of softmax for attention weights')
+parser.add_argument('--log_attention_weights', action='store_true', default=False,
+                    help='log attention weights as artifact in MLflow')
 parser.add_argument('--rgb', action='store_true', default=False,
                     help='use RGB input instead of grayscale')
 
@@ -97,10 +100,22 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
     })
 
     all_metrics = []
+    clean_truth, clean_pred = [], []
 
-    all_count_truth = []
-    all_count_pred = []
-    all_count_seed = []
+    all_runs_results = {
+        "seeds": [],
+        "bag_ids": [],
+        "truth": [],
+        "predicted": []
+    }
+    if args.naive_counting:
+        all_runs_results["count_truth"] = []
+        all_runs_results["count_pred"] = []
+        all_runs_results["count_threshold"] = []
+
+    if args.log_attention_weights:
+        all_runs_results["attention_weights"] = []
+
     # Iterate over each seed
     try:
         for seed in args.seeds:
@@ -231,6 +246,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     test_error = 0.
                     y_true, y_pred, y_prob = [], [], []
                     count_truth, count_pred = [], []
+                    attention_agg = []
 
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(test_dataset):
@@ -241,7 +257,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
 
                             # Single forward pass to avoid redindant computation
                             Y_prob, predicted_label, attention_weights = model(patches)
-
+                            
                             bag_label_f = bag_label.float()
                             Y_prob_clamped = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
                             loss = -1. * (bag_label_f * torch.log(Y_prob_clamped) + (1. - bag_label_f) * torch.log(1. - Y_prob_clamped))
@@ -252,14 +268,23 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                             y_true.append(bag_label.cpu().item())
                             y_pred.append(predicted_label.cpu().item())
                             y_prob.append(Y_prob.cpu().item())
-
+                            
+                            all_runs_results["seeds"].append(seed)
+                            all_runs_results["bag_ids"].append(batch_idx)
+                            all_runs_results["truth"].append(bag_label.cpu().item())
+                            all_runs_results["predicted"].append(predicted_label.cpu().item())
+                            
+                            if args.log_attention_weights:
+                                attention_agg.append(attention_weights.cpu().numpy().tolist())
+                            
                             if args.naive_counting:
                                 if predicted_label.cpu().item() == 1:  # Nur zählen, wenn die Vorhersage positiv ist
-                                    predicted_count, _ = model.count_positive_instances(patches)
+                                    predicted_count, _, threshold = model.count_positive_instances(patches)
                                 else:
                                     predicted_count = 0
                                 count_truth.append(count)
                                 count_pred.append(predicted_count)
+                                all_runs_results["count_threshold"].append(threshold)
 
                     test_loss /= len(test_dataset)
                     test_error /= len(test_dataset)
@@ -285,7 +310,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     
                     metrics['test_loss'] = test_loss
                     metrics['test_error'] = test_error
-
+                    
                     if args.naive_counting and len(count_pred) > 0:
                         counting_metrics = calculate_counting_metrics(count_truth, count_pred)
                         metrics['counting_accuracy'] = counting_metrics['counting_accuracy']
@@ -298,8 +323,11 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
 
                         clean_pred = [int(p.item()) if torch.is_tensor(p) else int(p) for p in count_pred]
 
-                        table_data =  {"Truth": clean_truth, "Predicted": clean_pred}
-                        mlflow.log_table(table_data, artifact_file="counting_results.json")
+                        # table_data =  {"Truth": clean_truth, "Predicted": clean_pred}
+                        # mlflow.log_table(table_data, artifact_file="counting_results.json")
+
+                        all_runs_results["count_truth"].extend(clean_truth)
+                        all_runs_results["count_pred"].extend(clean_pred)
 
                         fig, ax = plt.subplots(figsize=(6, 6))
                         ax.scatter(clean_truth, clean_pred, alpha=0.6, edgecolors='w')
@@ -317,9 +345,11 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                         mlflow.log_metrics({"count_mae": counting_metrics['counting_mae'], "count_rmse": counting_metrics['counting_rmse']})
                         print('Counting Accuracy: {:.4f}, MAE: {:.4f}, RMSE: {:.4f}'.format(
                             counting_metrics['counting_accuracy'], counting_metrics['counting_mae'], counting_metrics['counting_rmse']))
-                        return metrics, clean_truth, clean_pred
-                    
-                    return metrics, [], []
+                        
+                    if args.log_attention_weights and attention_agg:
+                        all_runs_results["attention_weights"].extend(attention_agg)
+                        
+                    return metrics, count_truth, count_pred
                 
                 print('Starting training!')
                 for epoch in range(1, args.epochs + 1):
@@ -328,15 +358,12 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     
                 print('Starting testing!')
                 metrics, seed_truth, seed_pred = test()
-                
-                if seed_truth and seed_pred:
-                    all_count_truth.extend(seed_truth)
-                    all_count_pred.extend(seed_pred)
-                    all_count_seed.extend([seed] * len(seed_truth))
 
                 all_metrics.append(metrics)
                 mlflow.pytorch.log_model(model, "model")  # Log the model to MLflow
 
+        # Logging in parent run after all seeds have been processed
+        mlflow.log_table(all_runs_results, artifact_file="aggregated_run_results.json")
 
         if all_metrics:
             print("\nAggregating metrics across seeds...")
@@ -351,45 +378,37 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     mlflow.log_metric(f'{key}_std', std_value)
                     print(f"{key}: Mean = {mean_value:.4f}, Std = {std_value:.4f}")
             
-            if all_count_truth and all_count_pred:
-                print("Logging aggregated counting artifacts...")
+        if all_runs_results["count_truth"] and all_runs_results["count_pred"]:
+            print("Logging aggregated counting artifacts...")
+            
+            fig, ax = plt.subplots(figsize=(8, 8))
+            colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow', 'black', 'brown']
+            
+            unique_seeds = sorted(set(all_runs_results["seeds"]))
+            for i, seed in enumerate(unique_seeds):
+                seed_truth = [all_runs_results["count_truth"][i] for i, s in enumerate(all_runs_results["seeds"]) if s == seed]
+                seed_pred = [all_runs_results["count_pred"][i] for i, s in enumerate(all_runs_results["seeds"]) if s == seed]
                 
-                parent_table = {
-                    "Seed": all_count_seed,
-                    "Truth": all_count_truth,
-                    "Predicted": all_count_pred
-                }
-                mlflow.log_table(parent_table, artifact_file="aggregated_counting_results.json")
+                # Nimm die entsprechende Farbe (modulo-Operator falls mehr Seeds als Farben existieren)
+                color = colors[i % len(colors)]
                 
-                fig, ax = plt.subplots(figsize=(8, 8))
-
-                colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow', 'black', 'brown']
-                
-                unique_seeds = sorted(set(all_count_seed))
-                for i, seed in enumerate(unique_seeds):
-                    seed_truth = [all_count_truth[i] for i, s in enumerate(all_count_seed) if s == seed]
-                    seed_pred = [all_count_pred[i] for i, s in enumerate(all_count_seed) if s == seed]
-                    
-                    # Nimm die entsprechende Farbe (modulo-Operator falls mehr Seeds als Farben existieren)
-                    color = colors[i % len(colors)]
-                    
-                    ax.scatter(
-                        seed_truth, seed_pred, 
-                        color=color, 
-                        label=f"Seed {seed}",
-                        alpha=0.6, edgecolors='w'
-                    )
-                
-                max_val = max(max(all_count_truth), max(all_count_pred))
-                ax.plot([0, max_val], [0, max_val], 'r--', label="Perfect Prediction") 
-                
-                ax.set_xlabel("True Count")
-                ax.set_ylabel("Predicted Count")
-                ax.set_title("Aggregated Count: Truth vs. Prediction (All Seeds)")
-                ax.legend()
-                
-                mlflow.log_figure(fig, "aggregated_counting_plot.png")
-                plt.close(fig)
+                ax.scatter(
+                    seed_truth, seed_pred, 
+                    color=color, 
+                    label=f"Seed {seed}",
+                    alpha=0.6, edgecolors='w'
+                )
+            
+            max_val = max(max(all_runs_results["count_truth"]), max(all_runs_results["count_pred"]))
+            ax.plot([0, max_val], [0, max_val], 'r--', label="Perfect Prediction") 
+            
+            ax.set_xlabel("True Count")
+            ax.set_ylabel("Predicted Count")
+            ax.set_title("Aggregated Count: Truth vs. Prediction (All Seeds)")
+            ax.legend()
+            
+            mlflow.log_figure(fig, "aggregated_counting_plot.png")
+            plt.close(fig)
 
     except Exception as e:
         print(f"An error occurred: {e}")
