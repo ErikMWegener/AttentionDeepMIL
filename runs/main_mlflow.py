@@ -39,12 +39,24 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--model', type=str, default='attention', 
                     help='Choose b/w attention and gated_attention')
+parser.add_argument('--model_M', type=int, default=500,
+                    help='Dimensionality of the MLP layer in the attention mechanism (default: 500)')
+parser.add_argument('--model_L', type=int, default=128,
+                    help='Dimensionality of the output of the attention mechanism (default: 128)')
+parser.add_argument('--model_pool_size', type=int, default=4,
+                    help='Output size of the adaptive pooling layer (default: 4)')
+parser.add_argument('--model_num_maps', type=int, default=50,
+                    help='Number of feature maps output by the convolutional layers (default: 50)')
+parser.add_argument('--model_kernel_size', type=int, default=5,
+                    help='Kernel size for convolutional layers (default: 5)')
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--path', type=str, default='../data/datasets/bags/mnist_bags.h5', metavar='H5',
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
                     help='name of the MLflow experiment (default: default)')
+parser.add_argument('--run_name', type=str, default=None, metavar='RUN',
+                    help='name of the MLflow run (default: None)')
 parser.add_argument('--sigmoid_attention', action='store_true', default=False,
                     help='use sigmoid instead of softmax for attention weights')
 parser.add_argument('--log_attention_weights', action='store_true', default=False,
@@ -84,19 +96,21 @@ if args.exp_name:
 #     mlflow.set_experiment(experiment_name)
 
 # Starting partent MLflow run to log parameters and artifacts common to all seeds
-with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_sigmoid{args.sigmoid_attention}") as parent_run:
+
+with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_sigmoid{args.sigmoid_attention}") as parent_run:
     mlflow.log_params(vars(args))
     if config_args.config is not None:
         mlflow.log_artifact(config_args.config)
     if config_args.config is None:
         mlflow.log_artifact(config_filename)
 
-    mlflow.log_input(
-        mlfdata.from_path(
-            path=args.path,
-            name=args.dataset,
-        )
-    )
+    # mlflow.log_input(
+    #     mlfdata.from_path(
+    #         path=args.path,
+    #         name=args.dataset,
+    #     )
+    # )
+    
     mlflow.set_tags({
         "model": args.model,
         "dataset": args.dataset,
@@ -106,6 +120,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
         "status": "in_progress"
     })
 
+    model_tags = {}
     all_metrics = []
     clean_truth, clean_pred = [], []
 
@@ -155,9 +170,28 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
 
                 print('Initialize model')
                 if args.model == 'attention':
-                    model = Attention(in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
+                    model = Attention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
+                    model_tags = {
+                        "model_M": model.M,
+                        "model_L": model.L,
+                        "model_pool_size": model.pool_size,
+                        "model_num_maps": model.num_maps,
+                        "model_kernel_size": model.kernel_size,
+                        "model_attention_branches": model.ATTENTION_BRANCHES,
+                        "model_architecture": "Conv2d(1->20->50) -> FC(800->M->L)"
+                    }
                 elif args.model == 'gated_attention':
-                    model = GatedAttention(in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
+                    model = GatedAttention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
+                    model_tags = {
+                        "model_M": model.M,
+                        "model_L": model.L,
+                        "model_pool_size": model.pool_size,
+                        "model_num_maps": model.num_maps,
+                        "model_kernel_size": model.kernel_size,
+                        "model_attention_branches": model.ATTENTION_BRANCHES,
+                        "model_architecture": "GatedAttention: V(Tanh) + U(Sigmoid) + w"
+                    }
+
                 if args.cuda:
                     model.cuda()
 
@@ -254,6 +288,8 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     y_true, y_pred, y_prob = [], [], []
                     count_truth, count_pred = [], []
                     attention_agg = []
+                    all_instance_labels = []  
+                    all_attention_weights = []  
 
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(test_dataset):
@@ -284,11 +320,16 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                             if args.log_attention_weights:
                                 attention_agg.append(attention_weights.cpu().numpy().tolist())
                             
+                            if predicted_label.cpu().item() == 1:
+                                all_instance_labels.extend(instance_label.cpu().numpy().flatten().tolist()    )
+                                all_attention_weights.extend(attention_weights.cpu().numpy().flatten().tolist())
+            
                             if args.naive_counting:
                                 if predicted_label.cpu().item() == 1:  # Nur zählen, wenn die Vorhersage positiv ist
                                     predicted_count, _, threshold = model.count_positive_instances(patches)
                                 else:
                                     predicted_count = 0
+                                    threshold = 0
                                 count_truth.append(count)
                                 count_pred.append(predicted_count)
                                 all_runs_results["count_threshold"].append(threshold)
@@ -304,6 +345,19 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                             metrics['accuracy'], metrics['precision'], metrics['recall'],
                             metrics['f1_score'], metrics['auc']))
 
+                    if len(all_instance_labels) > 0 and len(all_attention_weights) > 0:
+                        from sklearn.metrics import roc_auc_score
+                        if len(set(all_instance_labels)) > 2:
+                            all_instance_labels = np.where(np.array(all_instance_labels) == 9, 1, 0)  # Konvertiere Labels zu binär (positiv=1, negativ=0)
+                        all_attention_weights_converted = [1 if all_attention_weights[i] > all_runs_results["count_threshold"][i//100] else 0 for i in range(len(all_attention_weights))]
+                        patch_auc = roc_auc_score(all_instance_labels, all_attention_weights_converted)
+                        mlflow.log_metric('patch_level_auc', patch_auc)
+                        metrics['patch_level_auc'] = patch_auc
+                        print(f'Patch-Level AUC: {patch_auc:.4f}')
+                    else:
+                        patch_auc = 0
+                        print('Patch-Level AUC: Could not be computed (no positive bags)')
+
                     mlflow.log_metrics({"test_loss": test_loss,
                                         "test_error": test_error,
                                         "accuracy": metrics['accuracy'],
@@ -317,6 +371,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
                     
                     metrics['test_loss'] = test_loss
                     metrics['test_error'] = test_error
+                    metrics['patch_level_auc'] = patch_auc 
                     
                     if args.naive_counting and len(count_pred) > 0:
                         counting_metrics = calculate_counting_metrics(count_truth, count_pred)
@@ -371,6 +426,7 @@ with mlflow.start_run(run_name=f"{args.model}_{args.dataset}_lr{args.lr}_reg{arg
 
         # Logging in parent run after all seeds have been processed
         mlflow.log_table(all_runs_results, artifact_file="aggregated_run_results.json")
+        mlflow.set_tags(model_tags)
 
         if all_metrics:
             print("\nAggregating metrics across seeds...")
