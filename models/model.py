@@ -4,24 +4,27 @@ import torch.nn.functional as F
 
 
 class Attention(nn.Module):
-    def __init__(self, in_channels=1, sigmoid_attention=False):
+    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, sigmoid_attention=False):
         super(Attention, self).__init__()
-        self.M = 500
-        self.L = 128
-        self.ATTENTION_BRANCHES = 1
+        self.M = M
+        self.L = L
+        self.num_maps = num_maps
+        self.kernel_size = kernel_size
+        self.pool_size = pool_size
+        self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
         self.sigmoid_attention = sigmoid_attention
 
         self.feature_extractor_part1 = nn.Sequential(
-            nn.Conv2d(in_channels, 20, kernel_size=5),
+            nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
             nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
-            nn.Conv2d(20, 50, kernel_size=5),
+            nn.Conv2d(20, self.num_maps, kernel_size=self.kernel_size, padding=self.kernel_size//2),
             nn.ReLU(),
-            nn.AdaptiveMaxPool2d((4, 4))
+            nn.AdaptiveMaxPool2d((self.pool_size, self.pool_size))
         )
 
         self.feature_extractor_part2 = nn.Sequential(
-            nn.Linear(50 * 4 * 4, self.M),
+            nn.Linear(self.num_maps * self.pool_size * self.pool_size, self.M),
             nn.ReLU(),
         )
 
@@ -35,13 +38,16 @@ class Attention(nn.Module):
             nn.Linear(self.M*self.ATTENTION_BRANCHES, 1),
             nn.Sigmoid()
         )
+
+        if self.sigmoid_attention:
+            self.z_norm = nn.LayerNorm(self.M)
         
 
     def forward(self, x):
         x = x.squeeze(0)
 
         H = self.feature_extractor_part1(x)
-        H = H.view(-1, 50 * 4 * 4)
+        H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
         H = self.feature_extractor_part2(H)  # KxM
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
@@ -54,10 +60,12 @@ class Attention(nn.Module):
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
 
         if self.sigmoid_attention:
-            attention_sum = torch.sum(A, dim=1, keepdim=True) + 1e-6 
-            Z = Z/attention_sum
+            avg_attention = torch.mean(A, dim=1, keepdim=True)  # Durchschnitt über die K-Instanzen für jede ATTENTION_BRANCHES
+            scale = torch.clamp(avg_attention, min=0.05)  # Verhindert Division durch Null
+            Z = Z / scale  # Skaliere Z entsprechend der durchschnittlichen Aufmerksamkeit
 
-        
+            Z = self.z_norm(Z)  # Normalisiere Z, um Stabilität zu gewährleisten
+
         Y_prob = self.classifier(Z)
         Y_hat = torch.ge(Y_prob, 0.5).float()
 
@@ -94,29 +102,35 @@ class Attention(nn.Module):
         _, _, A = self.forward(X)
         K = A.shape[1]  # number of instances
         if threshold is None:
-            threshold = 1.0 / K
+            if self.sigmoid_attention:
+                threshold = torch.mean(A).item()
+            else:
+                threshold = 1.0 / K
         count = int((A.squeeze(0) > threshold).sum().item())
-        return count, A
+        return count, A, threshold
 
 class GatedAttention(nn.Module):
-    def __init__(self, in_channels=1, sigmoid_attention=False):
+    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, sigmoid_attention=False):
         super(GatedAttention, self).__init__()
-        self.M = 500
-        self.L = 128
-        self.ATTENTION_BRANCHES = 1
+        self.M = M
+        self.L = L
+        self.num_maps = num_maps
+        self.kernel_size = kernel_size
+        self.pool_size = pool_size
+        self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
         self.sigmoid_attention = sigmoid_attention
 
         self.feature_extractor_part1 = nn.Sequential(
-            nn.Conv2d(in_channels, 20, kernel_size=5),
+            nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
             nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
-            nn.Conv2d(20, 50, kernel_size=5),
+            nn.Conv2d(20, self.num_maps, kernel_size=self.kernel_size, padding=self.kernel_size//2),
             nn.ReLU(),
-            nn.AdaptiveMaxPool2d((4, 4))
+            nn.AdaptiveMaxPool2d((self.pool_size, self.pool_size))
         )
 
         self.feature_extractor_part2 = nn.Sequential(
-            nn.Linear(50 * 4 * 4, self.M),
+            nn.Linear(self.num_maps * self.pool_size * self.pool_size, self.M),
             nn.ReLU(),
         )
 
@@ -137,11 +151,14 @@ class GatedAttention(nn.Module):
             nn.Sigmoid()
         )
 
+        if self.sigmoid_attention:
+            self.z_norm = nn.LayerNorm(self.M)
+
     def forward(self, x):
         x = x.squeeze(0)
 
         H = self.feature_extractor_part1(x)
-        H = H.view(-1, 50 * 4 * 4)
+        H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
         H = self.feature_extractor_part2(H)  # KxM
 
         A_V = self.attention_V(H)  # KxL
@@ -156,8 +173,10 @@ class GatedAttention(nn.Module):
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
 
         if self.sigmoid_attention:
-            K = H.size(0) # Anzahl der Patches in der aktuellen Bag
-            Z = Z / K
+            avg_attention = torch.mean(A, dim=1, keepdim=True)
+            scale = torch.clamp(avg_attention, min=0.05)
+            Z = Z / scale
+            Z = self.z_norm(Z)
 
         Y_prob = self.classifier(Z)
         Y_hat = torch.ge(Y_prob, 0.5).float()
@@ -195,6 +214,9 @@ class GatedAttention(nn.Module):
         _, _, A = self.forward(X)
         K = A.shape[1]  # number of instances
         if threshold is None:
-            threshold = 1.0 / K
+            if self.sigmoid_attention:
+                threshold = torch.mean(A).item()
+            else:
+                threshold = 1.0 / K
         count = int((A.squeeze(0) > threshold).sum().item())
-        return count, A
+        return count, A, threshold
