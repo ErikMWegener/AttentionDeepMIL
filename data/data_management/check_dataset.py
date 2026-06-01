@@ -31,14 +31,23 @@ def plot_split_histograms(train_stats, val_stats, test_stats):
         widths = np.diff(bin_edges)
         
         ax.bar(bin_edges[:-1], frequencies, width=widths, align='edge', edgecolor='black', alpha=0.7)
+
+        mean_val = stats.get("mean")
+        if mean_val is not None:
+            ax.text(0.95, 0.95, f'Mean: {mean_val:.2f}', 
+                    transform=ax.transAxes, 
+                    fontsize=11,
+                    ha='right', va='top', 
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='gray'))
+            
         ax.set_title(title)
         ax.set_xlabel('Count Value')
         ax.set_ylabel('Frequency')
         ax.grid(axis='y', linestyle='--', alpha=0.7)
     
     plt.tight_layout()  # Verhindert, dass sich Labels überschneiden
-    # plt.savefig('histogram_splits.png')  # Bei Bedarf als Bilddatei abspeichern
-    plt.show()
+    plt.savefig(f'../../eval/results/{dataset_name}_histogram_splits.png')  # Bei Bedarf als Bilddatei abspeichern
+    #plt.show()
 
 
 args = sys.argv

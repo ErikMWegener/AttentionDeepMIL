@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 import os
 
-IMAGE_CSV_PATH = '../datasets/gwhd_2021/competition_test.csv'
+IMAGE_CSV_PATH = '../datasets/gwhd_2021/competition_train.csv'
 IMAGES_PATH = '../datasets/gwhd_2021/images'
 
 def extract_box_patches(bbox, img_w, img_h, patch_size=28, stride=28, threshold=1.0):
@@ -121,6 +121,8 @@ def visualize_patch_generation(image_name, stride, patch_size, threshold=0.5, de
 
         plt.title(f'Patch Generation for {image_name}\nRed: Positive Patches, Blue dashed: Original BBoxes')
         plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(f'../../eval/results/patch_generation_{image_name}_overlap{threshold}{"" if not dense else "_dense"}.png')  # Speichern als Bilddatei
         plt.show()
 
-visualize_patch_generation('255b6ca9fea63f44125e5174bc932470b604c76043071522ba0ef63abb1a544b.png', stride=64, patch_size=64, threshold=0.5, dense=True)
+visualize_patch_generation('a2a15938845d9812de03bd44799c4b1bf856a8ad11752e81c94dc8d138515021.png', stride=64, patch_size=64, threshold=1.0, dense=True)
