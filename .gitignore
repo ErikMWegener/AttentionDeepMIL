@@ -40,7 +40,6 @@ data/data_management/create_datasets.sh
 data/data_management/temp.py
 runs/mlruns/
 *.db
-data/datasets/gwhd_2021
-data/datasets/MNIST
+data/datasets/
 runs/configs
 runs/start_runs.sh
