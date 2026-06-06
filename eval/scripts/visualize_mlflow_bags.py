@@ -26,6 +26,21 @@ def visualize_attention_weights(json_path, h5_path, dataset_name, seed=1, bag_id
 
     patches, coords, label, count, instance_label = reader[bag_id]
 
+    instance_labels = []
+    if 'mnist' in dataset_name.lower():
+        # Flatten the 2D grid to 1D
+        if torch.is_tensor(instance_label):
+            instance_label_flat = instance_label.flatten().numpy()
+        else:
+            instance_label_flat = np.array(instance_label).flatten()
+        
+        # Convert to binary: 1 if class 9 (target), 0 otherwise
+        instance_labels = (instance_label_flat == 9).astype(int)
+    else:
+        # For other datasets, assume instance_label is already 1D binary
+        instance_labels = np.array([int(l.item() if torch.is_tensor(l) else l) for l in instance_label])
+       
+
     wheights_np = np.array(bag["attention_weights"].values[0]).flatten()
 
     K = len(patches) # Anzahl der Patches
@@ -61,8 +76,7 @@ def visualize_attention_weights(json_path, h5_path, dataset_name, seed=1, bag_id
         is_counted = weight > threshold
         
         # Ground Truth Label extrahieren (falls als Tensor vorliegend)
-        gt_label = int(instance_label[i].item() if torch.is_tensor(instance_label[i]) else instance_label[i])
-
+        gt_label = instance_labels[i] if i < len(instance_labels) else 0  # Fallback zu 0, falls Labels fehlen
         # Farb- und Stil-Logik (TP, FP, TN, FN)
         if is_counted and gt_label == 1:
             # True Positive
@@ -103,7 +117,7 @@ def visualize_attention_weights(json_path, h5_path, dataset_name, seed=1, bag_id
         
     # Titel erweitern um die True-Positive Rate info etc. (Optional, aber hilfreich)
     predicted_count = sum(w > threshold for w in wheights_np)
-    actual_positive_instances = sum(int(il.item() if torch.is_tensor(il) else il) for il in instance_label)
+    actual_positive_instances = sum(int(il.item() if torch.is_tensor(il) else il) for il in instance_labels)
     
     fig.suptitle(
         f"Bag ID: {bag['bag_ids'].values[0]} | Seed: {seed} | Threshold: {threshold:.4f}\n"
@@ -118,14 +132,14 @@ def visualize_attention_weights(json_path, h5_path, dataset_name, seed=1, bag_id
 if __name__ == "__main__":
     # --- ANPASSEN ---
     # Pfad zur JSON-Datei aus deinem spezifischen MLflow Run (z.B. in mlruns/...)
-    JSON_FILE = "/home/erik/AttentionDeepMIL/runs/mlruns/7/ee6542dd5e754e2fa2dfcafefaafd8b8/artifacts/aggregated_run_results.json" 
+    JSON_FILE = "/home/erik/AttentionDeepMIL/runs/mlruns/0/889712d626f04eaa8f1285dbe8a9b80f/artifacts/aggregated_run_results.json" 
     
     # Pfad zu deinem Original-Datensatz
-    H5_FILE = "../../data/datasets/bags/gwhd_bags.h5" 
-    DATASET_NAME = "gwhd_bags_dense"
+    H5_FILE = "../../data/datasets/bags/mnist_bags.h5" 
+    DATASET_NAME = "mnist_bags_beta2.0"
     # ----------------
     
     if os.path.exists(JSON_FILE):
-        visualize_attention_weights(JSON_FILE, H5_FILE, dataset_name=DATASET_NAME, seed=1, bag_id=4, softmax=False)
+        visualize_attention_weights(JSON_FILE, H5_FILE, dataset_name=DATASET_NAME, seed=1, bag_id=0, softmax=False)
     else:
         print(f"JSON-Datei nicht gefunden: {JSON_FILE}")

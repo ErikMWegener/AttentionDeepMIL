@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import argparse
+import torch
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
@@ -31,7 +32,18 @@ def analyze_confusion_distribution(json_path, h5_path, dataset_name, output_dir=
         from data.data_management.dataset_manager import DatasetReader
         reader = DatasetReader(h5_path, dataset_name=dataset_name, split='test')
         _, _, _, _, instance_label = reader[int(row['bag_ids'])]
-        instance_label = np.array([int(l.item() if hasattr(l, 'item') else l) for l in instance_label])
+        if 'mnist' in dataset_name.lower():
+            # Flatten the 2D grid to 1D
+            if torch.is_tensor(instance_label):
+                instance_label_flat = instance_label.flatten().numpy()
+            else:
+                instance_label_flat = np.array(instance_label).flatten()
+            
+            # Convert to binary: 1 if class 9 (target), 0 otherwise
+            instance_label = (instance_label_flat == 9).astype(int)
+        else:
+            # For other datasets, assume instance_label is already 1D binary
+            instance_label = np.array([int(l.item() if torch.is_tensor(l) else l) for l in instance_label])
         
         tp = np.sum((predicted == 1) & (instance_label == 1))
         fp = np.sum((predicted == 1) & (instance_label == 0))

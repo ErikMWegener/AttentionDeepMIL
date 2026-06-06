@@ -32,7 +32,21 @@ def load_attention_data(json_path, h5_path, dataset_name, split='test'):
     for  i in range(df.shape[0]):
         # Attention-Gewichte auspacken
         _,_,_,_,instance_label = reader[df['bag_ids'].iloc[i]]
-        labels = np.array([int(l.item() if torch.is_tensor(l) else l) for l in instance_label])
+        
+        # Handle MNIST case: instance_label is a 2D Potts grid, flatten and convert to binary
+        if 'mnist' in dataset_name.lower():
+            # Flatten the 2D grid to 1D
+            if torch.is_tensor(instance_label):
+                instance_label_flat = instance_label.flatten().numpy()
+            else:
+                instance_label_flat = np.array(instance_label).flatten()
+            
+            # Convert to binary: 1 if class 9 (target), 0 otherwise
+            labels = (instance_label_flat == 9).astype(int)
+        else:
+            # For other datasets, assume instance_label is already 1D binary
+            labels = np.array([int(l.item() if torch.is_tensor(l) else l) for l in instance_label])
+        
         instanz_labels_all.append(labels)
 
     df['instance_labels'] = instanz_labels_all
@@ -233,7 +247,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Analyze Attention Weight Distribution and Patch-Level Performance')
     parser.add_argument('--json_path', type=str, required=True, 
                         help='Path to MLflow aggregated_run_results.json')
-    parser.add_argument('--h5_path', type=str, default='data/datasets/bags/gwhd_bags.h5',
+    parser.add_argument('--h5_path', type=str, default='../../data/datasets/bags/gwhd_bags.h5',
                         help='Path to H5 dataset')
     parser.add_argument('--dataset_name', type=str, default='gwhd_bags_dense',
                         help='Dataset name in H5 file')
@@ -246,6 +260,8 @@ if __name__ == '__main__':
     df = load_attention_data(args.json_path, args.h5_path, args.dataset_name)
     
     all_labels_flat = np.concatenate([np.array(x).flatten() for x in df['instance_labels']])
+    if len(set(all_labels_flat)) > 2:
+        all_labels_flat = [1 if l == 9 else 0 for l in all_labels_flat]  # Annahme: Klasse 9 ist positiv, Rest negativ
     print(f"Loaded {len(df)} bags total")
     print(f"Positive patches: {np.sum(all_labels_flat == 1)}, Negative patches: {np.sum(all_labels_flat == 0)}")
 
