@@ -57,8 +57,8 @@ parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
                     help='name of the MLflow experiment (default: default)')
 parser.add_argument('--run_name', type=str, default=None, metavar='RUN',
                     help='name of the MLflow run (default: None)')
-parser.add_argument('--sigmoid_attention', action='store_true', default=False,
-                    help='use sigmoid instead of softmax for attention weights')
+parser.add_argument('--attention_activation', type=str, default='softmax', choices=['sigmoid', 'min_max', 'softmax'],
+                    help='activation function for attention weights (default: softmax)')
 parser.add_argument('--log_attention_weights', action='store_true', default=False,
                     help='log attention weights as artifact in MLflow')
 parser.add_argument('--rgb', action='store_true', default=False,
@@ -84,7 +84,7 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 if config_args.config is None:
     print(f"No config file provided. Using default arguments and command line overrides.")
     args_dict = vars(args)
-    config_filename = f"configs/{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_sigmoid{args.sigmoid_attention}_config.yaml"
+    config_filename = f"configs/{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_attention_activation{args.attention_activation}_config.yaml"
     with open(config_filename, 'w') as f:
         yaml.dump(args_dict, f, default_flow_style=False)
     print(f"Run configuration saved to {config_filename}")
@@ -97,7 +97,7 @@ if args.exp_name:
 
 # Starting partent MLflow run to log parameters and artifacts common to all seeds
 
-with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_sigmoid{args.sigmoid_attention}") as parent_run:
+with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}_ep{args.epochs}_attention_activation{args.attention_activation}") as parent_run:
     mlflow.log_params(vars(args))
     if config_args.config is not None:
         mlflow.log_artifact(config_args.config)
@@ -170,7 +170,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                 print('Initialize model')
                 if args.model == 'attention':
-                    model = Attention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
+                    model = Attention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, attention_activation=args.attention_activation)
                     model_tags = {
                         "model_M": model.M,
                         "model_L": model.L,
@@ -181,7 +181,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_architecture": "Conv2d(1->20->50) -> FC(800->M->L)"
                     }
                 elif args.model == 'gated_attention':
-                    model = GatedAttention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, sigmoid_attention=args.sigmoid_attention)
+                    model = GatedAttention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, attention_activation=args.attention_activation)
                     model_tags = {
                         "model_M": model.M,
                         "model_L": model.L,

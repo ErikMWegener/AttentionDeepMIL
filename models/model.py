@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from models import otsu
 
 
 class Attention(nn.Module):
-    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, sigmoid_attention=False):
+    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, attention_activation="softmax"):
         super(Attention, self).__init__()
         self.M = M
         self.L = L
@@ -12,7 +13,7 @@ class Attention(nn.Module):
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
-        self.sigmoid_attention = sigmoid_attention
+        self.attention_activation = attention_activation
 
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
@@ -39,7 +40,7 @@ class Attention(nn.Module):
             nn.Sigmoid()
         )
 
-        if self.sigmoid_attention:
+        if self.attention_activation == "sigmoid" or self.attention_activation == "min_max":
             self.z_norm = nn.LayerNorm(self.M)
         
 
@@ -52,14 +53,19 @@ class Attention(nn.Module):
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
         A = torch.transpose(A, 1, 0)  # ATTENTION_BRANCHESxK
-        if self.sigmoid_attention:
+        if self.attention_activation == "sigmoid":
+            A = (A - A.mean()) / (A.std() + 1e-8)
             A = F.sigmoid(A)  # sigmoid over K
+        elif self.attention_activation == "min_max":
+            A_min = A.min(dim=1, keepdim=True)[0]
+            A_max = A.max(dim=1, keepdim=True)[0]
+            A = (A - A_min) / (A_max - A_min + 1e-8)  # min-max normalize to [0, 1]
         else:
             A = F.softmax(A, dim=1)  # softmax over K
 
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
 
-        if self.sigmoid_attention:
+        if self.attention_activation == "sigmoid" or self.attention_activation == "min_max":
             avg_attention = torch.mean(A, dim=1, keepdim=True)  # Durchschnitt über die K-Instanzen für jede ATTENTION_BRANCHES
             scale = torch.clamp(avg_attention, min=0.05)  # Verhindert Division durch Null
             Z = Z / scale  # Skaliere Z entsprechend der durchschnittlichen Aufmerksamkeit
@@ -102,15 +108,17 @@ class Attention(nn.Module):
         _, _, A = self.forward(X)
         K = A.shape[1]  # number of instances
         if threshold is None:
-            if self.sigmoid_attention:
+            if self.attention_activation == "sigmoid":
                 threshold = torch.mean(A).item()
+            elif self.attention_activation == "min_max":
+                threshold = otsu.compute_otsu_threshold(A)
             else:
                 threshold = 1.0 / K
         count = int((A.squeeze(0) > threshold).sum().item())
         return count, A, threshold
 
 class GatedAttention(nn.Module):
-    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, sigmoid_attention=False):
+    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, attention_activation="softmax"):
         super(GatedAttention, self).__init__()
         self.M = M
         self.L = L
@@ -118,7 +126,7 @@ class GatedAttention(nn.Module):
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
-        self.sigmoid_attention = sigmoid_attention
+        self.attention_activation = attention_activation
 
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
@@ -151,7 +159,7 @@ class GatedAttention(nn.Module):
             nn.Sigmoid()
         )
 
-        if self.sigmoid_attention:
+        if self.attention_activation == "sigmoid":
             self.z_norm = nn.LayerNorm(self.M)
 
     def forward(self, x):
@@ -165,14 +173,14 @@ class GatedAttention(nn.Module):
         A_U = self.attention_U(H)  # KxL
         A = self.attention_w(A_V * A_U) # element wise multiplication # KxATTENTION_BRANCHES
         A = torch.transpose(A, 1, 0)  # ATTENTION_BRANCHESxK
-        if self.sigmoid_attention:
+        if self.attention_activation == "sigmoid":
             A = F.sigmoid(A)  # sigmoid over K
         else:
             A = F.softmax(A, dim=1)  # softmax over K
 
         Z = torch.mm(A, H)  # ATTENTION_BRANCHESxM
 
-        if self.sigmoid_attention:
+        if self.attention_activation == "sigmoid":
             avg_attention = torch.mean(A, dim=1, keepdim=True)
             scale = torch.clamp(avg_attention, min=0.05)
             Z = Z / scale
@@ -214,7 +222,7 @@ class GatedAttention(nn.Module):
         _, _, A = self.forward(X)
         K = A.shape[1]  # number of instances
         if threshold is None:
-            if self.sigmoid_attention:
+            if self.attention_activation == "sigmoid":
                 threshold = torch.mean(A).item()
             else:
                 threshold = 1.0 / K
