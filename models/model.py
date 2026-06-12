@@ -108,12 +108,10 @@ class Attention(nn.Module):
         _, _, A = self.forward(X)
         K = A.shape[1]  # number of instances
         if threshold is None:
-            if self.attention_activation == "sigmoid":
-                threshold = torch.mean(A).item()
-            elif self.attention_activation == "min_max":
-                threshold = otsu.compute_otsu_threshold(A)
-            else:
+            if self.attention_activation == "softmax":
                 threshold = 1.0 / K
+            else:
+                threshold = otsu.compute_otsu_threshold(A)
         count = int((A.squeeze(0) > threshold).sum().item())
         return count, A, threshold
 
