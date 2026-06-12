@@ -57,6 +57,8 @@ class Attention(nn.Module):
             A = (A - A.mean()) / (A.std() + 1e-8)
             A = F.sigmoid(A)  # sigmoid over K
         elif self.attention_activation == "min_max":
+            A = (A - A.mean(dim=1, keepdim=True)) / (A.std(dim=1, keepdim=True) + 1e-8)
+
             A_min = A.min(dim=1, keepdim=True)[0]
             A_max = A.max(dim=1, keepdim=True)[0]
             A = (A - A_min) / (A_max - A_min + 1e-8)  # min-max normalize to [0, 1]
