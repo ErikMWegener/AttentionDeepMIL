@@ -17,7 +17,6 @@ class Attention(nn.Module):
         self.attention_activation = attention_activation
         self.temperature = nn.Parameter(torch.ones(1))
         self.entmax_alpha = nn.Parameter(torch.tensor(1.5))  # learnable alpha for entmax
-        self.entmax = EntmaxBisect(dim=1)
 
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
@@ -71,7 +70,8 @@ class Attention(nn.Module):
         elif self.attention_activation == "sparsemax":
             A = sparsemax(A, dim=1)  # sparsemax over K
         elif self.attention_activation == "entmax":
-            A = self.entmax(A, alpha=self.entmax_alpha.clamp(1.0, 2.0)) # entmax over K with learnable alpha
+            alpha_clamped = self.entmax_alpha.clamp(1.0, 2.0)
+            A = self.entmax(A, alpha=alpha_clamped, dim=1) # entmax over K with learnable alpha
         else: # when not specified, default to softmax
             A = torch.softmax(A, dim=1)  # softmax over K
 
