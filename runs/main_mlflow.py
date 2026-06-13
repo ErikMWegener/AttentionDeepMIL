@@ -57,7 +57,7 @@ parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
                     help='name of the MLflow experiment (default: default)')
 parser.add_argument('--run_name', type=str, default=None, metavar='RUN',
                     help='name of the MLflow run (default: None)')
-parser.add_argument('--attention_activation', type=str, default='softmax', choices=['sigmoid', 'min_max', 'softmax'],
+parser.add_argument('--attention_activation', type=str, default='softmax', choices=['sigmoid', 'min_max', 'softmax', 'sparsemax', "softmax_temperature"],
                     help='activation function for attention weights (default: softmax)')
 parser.add_argument('--log_attention_weights', action='store_true', default=False,
                     help='log attention weights as artifact in MLflow')
