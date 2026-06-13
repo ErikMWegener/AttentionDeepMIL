@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models import otsu
-from entmax import sparsemax, EntmaxBisect
+from entmax import sparsemax, entmax_bisect
 
 
 class Attention(nn.Module):
@@ -71,7 +71,7 @@ class Attention(nn.Module):
             A = sparsemax(A, dim=1)  # sparsemax over K
         elif self.attention_activation == "entmax":
             alpha_clamped = self.entmax_alpha.clamp(1.0, 2.0)
-            A = self.entmax(A, alpha=alpha_clamped, dim=1) # entmax over K with learnable alpha
+            A = entmax_bisect(A, alpha=alpha_clamped, dim=1) # entmax over K with learnable alpha
         else: # when not specified, default to softmax
             A = torch.softmax(A, dim=1)  # softmax over K
 
