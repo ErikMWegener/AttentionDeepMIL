@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models import otsu
-from entmax import sparsemax
+from entmax import sparsemax, EntmaxBisect
 
 
 class Attention(nn.Module):
@@ -16,6 +16,8 @@ class Attention(nn.Module):
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
         self.attention_activation = attention_activation
         self.temperature = nn.Parameter(torch.ones(1))
+        self.entmax_alpha = nn.Parameter(torch.tensor(1.5))  # learnable alpha for entmax
+        self.entmax = EntmaxBisect(dim=1)
 
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
@@ -68,6 +70,8 @@ class Attention(nn.Module):
             A = torch.softmax(A / self.temperature.clamp(min=0.1), dim=1)  # softmax over K with temperature
         elif self.attention_activation == "sparsemax":
             A = sparsemax(A, dim=1)  # sparsemax over K
+        elif self.attention_activation == "entmax":
+            A = self.entmax(A, alpha=self.entmax_alpha.clamp(1.0, 2.0)) # entmax over K with learnable alpha
         else: # when not specified, default to softmax
             A = torch.softmax(A, dim=1)  # softmax over K
 
@@ -118,7 +122,7 @@ class Attention(nn.Module):
         if threshold is None:
             if self.attention_activation == "softmax":
                 threshold = 1.0 / K
-            elif self.attention_activation == "sparsemax":
+            elif self.attention_activation == "sparsemax" or self.attention_activation == "entmax":
                 threshold = 0.0  # sparsemax sets small values to exactly zero, so we can use zero as threshold
             else:
                 threshold = otsu.compute_otsu_threshold(A)
