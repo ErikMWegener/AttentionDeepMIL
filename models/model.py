@@ -145,7 +145,6 @@ class AttentionBatchNorm(nn.Module):
         super(AttentionBatchNorm, self).__init__()
         self.M = M
         self.L = L
-        self.num_maps = num_maps
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
@@ -165,7 +164,7 @@ class AttentionBatchNorm(nn.Module):
         )
 
         self.feature_extractor_part2 = nn.Sequential(
-            nn.Linear(self.num_maps * self.pool_size * self.pool_size, self.M),
+            nn.Linear(64 * self.pool_size * self.pool_size, self.M),
             nn.ReLU(),
         )
 
@@ -188,7 +187,7 @@ class AttentionBatchNorm(nn.Module):
         x = x.squeeze(0)
 
         H = self.feature_extractor_part1(x)
-        H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+        H = H.view(-1, 64 * self.pool_size * self.pool_size)
         H = self.feature_extractor_part2(H)  # KxM
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
@@ -272,7 +271,7 @@ class AttentionBatchNorm(nn.Module):
         with torch.no_grad():
             x = x.squeeze(0)
             H = self.feature_extractor_part1(x)
-            H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+            H = H.view(-1, 64 * self.pool_size * self.pool_size)
             H = self.feature_extractor_part2(H)  # [K, M]
             _, _, A = self.forward(x.unsqueeze(0))
         return H.cpu().numpy(), A.squeeze(0).cpu().numpy()
@@ -282,7 +281,6 @@ class AttentionThirdConv(nn.Module):
         super(AttentionThirdConv, self).__init__()
         self.M = M
         self.L = L
-        self.num_maps = num_maps
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
@@ -329,7 +327,7 @@ class AttentionThirdConv(nn.Module):
         x = x.squeeze(0)
 
         H = self.feature_extractor_part1(x)
-        H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+        H = H.view(-1, 64 * self.pool_size * self.pool_size)
         H = self.feature_extractor_part2(H)  # KxM
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
@@ -413,17 +411,16 @@ class AttentionThirdConv(nn.Module):
         with torch.no_grad():
             x = x.squeeze(0)
             H = self.feature_extractor_part1(x)
-            H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+            H = H.view(-1, 64 * self.pool_size * self.pool_size)
             H = self.feature_extractor_part2(H)  # [K, M]
             _, _, A = self.forward(x.unsqueeze(0))
         return H.cpu().numpy(), A.squeeze(0).cpu().numpy()
     
 class AttentionDropout(nn.Module):
     def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, attention_activation="softmax"):
-        super(AttentionThirdConv, self).__init__()
+        super(AttentionDropout, self).__init__()
         self.M = M
         self.L = L
-        self.num_maps = num_maps
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
@@ -471,7 +468,7 @@ class AttentionDropout(nn.Module):
         x = x.squeeze(0)
 
         H = self.feature_extractor_part1(x)
-        H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+        H = H.view(-1, 64 * self.pool_size * self.pool_size)
         H = self.feature_extractor_part2(H)  # KxM
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
@@ -555,7 +552,7 @@ class AttentionDropout(nn.Module):
         with torch.no_grad():
             x = x.squeeze(0)
             H = self.feature_extractor_part1(x)
-            H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+            H = H.view(-1, 64 * self.pool_size * self.pool_size)
             H = self.feature_extractor_part2(H)  # [K, M]
             _, _, A = self.forward(x.unsqueeze(0))
         return H.cpu().numpy(), A.squeeze(0).cpu().numpy()
