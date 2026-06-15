@@ -17,7 +17,7 @@ import pandas as pd
 
 from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
-from models.model import Attention, GatedAttention
+from models.model import Attention, AttentionBatchNorm, AttentionDropout, AttentionThirdConv, GatedAttention
 import visualize_features as vf
 
 
@@ -196,7 +196,40 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_attention_branches": model.ATTENTION_BRANCHES,
                         "model_architecture": "GatedAttention: V(Tanh) + U(Sigmoid) + w"
                     }
-
+                elif args.model == 'attention_batchnorm':
+                    model = AttentionBatchNorm(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, attention_activation=args.attention_activation)
+                    model_tags = {
+                        "model_M": model.M,
+                        "model_L": model.L,
+                        "model_pool_size": model.pool_size,
+                        "model_num_maps": model.num_maps,
+                        "model_kernel_size": model.kernel_size,
+                        "model_attention_branches": model.ATTENTION_BRANCHES,
+                        "model_architecture": "AttentionBatchNorm: Conv2d(1->20->50) + BatchNorm -> FC(800->M->L)"
+                    } 
+                elif args.model == 'attention_third_conv':
+                    model = AttentionThirdConv(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, attention_activation=args.attention_activation)
+                    model_tags = {
+                        "model_M": model.M,
+                        "model_L": model.L,
+                        "model_pool_size": model.pool_size,
+                        "model_num_maps": model.num_maps,
+                        "model_kernel_size": model.kernel_size,
+                        "model_attention_branches": model.ATTENTION_BRANCHES,
+                        "model_architecture": "AttentionThirdConv: Conv2d(1->20->50) -> FC(800->M->L)"
+                    }
+                elif args.model == 'attention_dropout':
+                    model = AttentionDropout(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, attention_activation=args.attention_activation)
+                    model_tags = {
+                        "model_M": model.M,
+                        "model_L": model.L,
+                        "model_pool_size": model.pool_size,
+                        "model_num_maps": model.num_maps,
+                        "model_kernel_size": model.kernel_size,
+                        "model_attention_branches": model.ATTENTION_BRANCHES,
+                        "model_architecture": "AttentionDropout: Conv2d(1->20->50) -> FC(800->M->L) + Dropout(p=0.25)"
+                    }
+                
                 if args.cuda:
                     model.cuda()
 
