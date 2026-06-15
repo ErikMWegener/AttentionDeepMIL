@@ -128,6 +128,17 @@ class Attention(nn.Module):
                 threshold = otsu.compute_otsu_threshold(A)
         count = int((A.squeeze(0) > threshold).sum().item())
         return count, A, threshold
+    
+    def extract_features(self, x):
+        """Gibt H (Feature-Vektoren) und A (Attention-Gewichte) zurück."""
+        self.eval()
+        with torch.no_grad():
+            x = x.squeeze(0)
+            H = self.feature_extractor_part1(x)
+            H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+            H = self.feature_extractor_part2(H)  # [K, M]
+            _, _, A = self.forward(x.unsqueeze(0))
+        return H.cpu().numpy(), A.squeeze(0).cpu().numpy()
 
 class GatedAttention(nn.Module):
     def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, attention_activation="softmax"):

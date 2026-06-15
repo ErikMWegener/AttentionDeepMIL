@@ -15,10 +15,11 @@ import matplotlib.pyplot as plt
 import yaml
 import pandas as pd
 
-
 from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
 from models.model import Attention, GatedAttention
+import visualize_features as vf
+
 
 # Get arguments from command line
 parser = argparse.ArgumentParser(description='Testing Atteintion MIL models on datasets loaded from H5 files.')
@@ -61,6 +62,8 @@ parser.add_argument('--attention_activation', type=str, default='softmax', choic
                     help='activation function for attention weights (default: softmax)')
 parser.add_argument('--log_attention_weights', action='store_true', default=False,
                     help='log attention weights as artifact in MLflow')
+parser.add_argument('--visualize_features', action='store_true', default=False,
+                    help='visualize extracted features using UMAP and log the plot to MLflow')
 parser.add_argument('--rgb', action='store_true', default=False,
                     help='use RGB input instead of grayscale')
 
@@ -137,6 +140,8 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
     if args.log_attention_weights:
         all_runs_results["attention_weights"] = []
+
+    all_feature_data = []  # Liste zum Speichern von H, A, bag_lbls, inst_lbls und seed_ids für alle Seeds
 
     # Iterate over each seed
     try:
@@ -424,6 +429,39 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                 all_metrics.append(metrics)
                 mlflow.pytorch.log_model(model, "model")  # Log the model to MLflow
 
+                # ── Feature-Visualisierung (Child Run / Per-Seed) ────────────────────
+                if args.visualize_features:
+                    if not hasattr(model, 'extract_features'):
+                        print("Warning: Modell hat keine extract_features()-Methode. "
+                              "Bitte model.py aktualisieren. Visualisierung übersprungen.")
+                    else:
+                        try:
+                            print(f"\nSammle Features für Visualisierung...")
+                            H, A, bag_lbls, inst_lbls, bag_ids = vf.collect_features_from_loader(
+                                model, test_dataset,
+                                device="cuda" if args.cuda else "cpu"
+                            )
+                            H_2d = vf.reduce_dimensions(H, "umap")
+                            fig = vf.plot_per_seed(
+                                H_2d, A, bag_lbls, inst_lbls,
+                                title_suffix=f"Seed {seed}"
+                            )
+                            mlflow.log_figure(fig, "feature_visualization.png")
+                            plt.close(fig)
+                            print(f"  Feature-Plot in Child Run geloggt (seed={seed}).")
+ 
+                            # Rohdaten für den aggregierten Parent-Plot aufbewahren
+                            all_feature_data.append({
+                                "H":               H,
+                                "A":               A,
+                                "bag_labels":      bag_lbls,
+                                "instance_labels": inst_lbls,
+                                "seed_ids":        np.full(len(H), seed, dtype=int),
+                            })
+                        except Exception as viz_err:
+                            print(f"Feature-Visualisierung für Seed {seed} fehlgeschlagen: {viz_err}")
+                # ────────────────────────────────────────────────────────────────────
+
         # Logging in parent run after all seeds have been processed
         mlflow.log_table(all_runs_results, artifact_file="aggregated_run_results.json")
         mlflow.set_tags(model_tags)
@@ -472,6 +510,38 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
             
             mlflow.log_figure(fig, "aggregated_counting_plot.png")
             plt.close(fig)
+
+        # ── Aggregierte Feature-Visualisierung (Parent Run) ──────────────────────
+        if args.visualize_features and len(all_feature_data) > 0:
+            try:
+                print("\nErstelle aggregierten Feature-Plot über alle Seeds...")
+                H_agg   = np.concatenate([d["H"]               for d in all_feature_data])
+                A_agg   = np.concatenate([d["A"]               for d in all_feature_data])
+                bl_agg  = np.concatenate([d["bag_labels"]      for d in all_feature_data])
+                il_agg  = np.concatenate([d["instance_labels"] for d in all_feature_data])
+                sid_agg = np.concatenate([d["seed_ids"]        for d in all_feature_data])
+ 
+                print(f"  Gesamt: {len(H_agg)} Instanzen aus {len(all_feature_data)} Seed(s).")
+                H_2d_agg = vf.reduce_dimensions(H_agg, "umap")
+ 
+                if len(all_feature_data) > 1:
+                    # Mehrere Seeds → 4-Panel-Plot mit Seed-Zugehörigkeit
+                    fig = vf.plot_aggregated(H_2d_agg, A_agg, bl_agg, il_agg, sid_agg)
+                    mlflow.log_figure(fig, "feature_visualization_aggregated.png")
+                else:
+                    # Nur ein Seed → gleicher 3-Panel-Plot wie im Child Run,
+                    # aber explizit im Parent Run geloggt
+                    fig = vf.plot_per_seed(
+                        H_2d_agg, A_agg, bl_agg, il_agg,
+                        title_suffix=f"Seed {int(sid_agg[0])} (Parent)"
+                    )
+                    mlflow.log_figure(fig, "feature_visualization_aggregated.png")
+ 
+                plt.close(fig)
+                print("  Aggregierter Feature-Plot in Parent Run geloggt.")
+            except Exception as viz_err:
+                print(f"Aggregierte Feature-Visualisierung fehlgeschlagen: {viz_err}")
+        # ────────────────────────────────────────────────────────────────────────
 
     except Exception as e:
         print(f"An error occurred: {e}")
