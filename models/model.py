@@ -145,6 +145,7 @@ class AttentionBatchNorm(nn.Module):
         super(AttentionBatchNorm, self).__init__()
         self.M = M
         self.L = L
+        self.num_maps = 64
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
@@ -281,6 +282,7 @@ class AttentionThirdConv(nn.Module):
         super(AttentionThirdConv, self).__init__()
         self.M = M
         self.L = L
+        self.num_maps = 64
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
@@ -421,6 +423,7 @@ class AttentionDropout(nn.Module):
         super(AttentionDropout, self).__init__()
         self.M = M
         self.L = L
+        self.num_maps = 64
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.ATTENTION_BRANCHES = ATTENTION_BRANCHES
