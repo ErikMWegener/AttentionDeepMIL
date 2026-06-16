@@ -155,11 +155,11 @@ class AttentionBatchNorm(nn.Module):
 
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.BatchNorm2d(32),
+            nn.GroupNorm(num_groups=4, num_channels=32),
             nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(32, 64, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(num_groups=4, num_channels=64),
             nn.ReLU(),
             nn.AdaptiveMaxPool2d((self.pool_size, self.pool_size))
         )
@@ -292,14 +292,14 @@ class AttentionThirdConv(nn.Module):
 
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.BatchNorm2d(32),
+            nn.GroupNorm(num_groups=4, num_channels=32),
             nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(32, 64, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(num_groups=4, num_channels=64),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=self.kernel_size//2),
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(num_groups=4, num_channels=64),
             nn.ReLU(),
             nn.AdaptiveMaxPool2d((self.pool_size, self.pool_size))
         )
@@ -433,14 +433,14 @@ class AttentionDropout(nn.Module):
 
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.BatchNorm2d(32),
+            nn.GroupNorm(num_groups=4, num_channels=32),
             nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
             nn.Conv2d(32, 64, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(num_groups=4, num_channels=64),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=self.kernel_size//2),
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(num_groups=4, num_channels=64),
             nn.ReLU(),
             nn.AdaptiveMaxPool2d((self.pool_size, self.pool_size))
         )

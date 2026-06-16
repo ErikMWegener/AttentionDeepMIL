@@ -387,6 +387,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         from sklearn.metrics import roc_auc_score
                         if len(set(all_instance_labels)) > 2:
                             all_instance_labels = np.where(np.array(all_instance_labels) == 9, 1, 0)  # Konvertiere Labels zu binär (positiv=1, negativ=0)
+                            print("Weights:" + len(all_attention_weights).__str__() + "\n" + "Thresholds:" + len(all_runs_results["count_threshold"]).__str__())
                         all_attention_weights_converted = [1 if all_attention_weights[i] > all_runs_results["count_threshold"][i//100] else 0 for i in range(len(all_attention_weights))]
                         patch_auc = roc_auc_score(all_instance_labels, all_attention_weights_converted)
                         mlflow.log_metric('patch_level_auc', patch_auc)
