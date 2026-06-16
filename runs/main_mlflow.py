@@ -18,6 +18,7 @@ import pandas as pd
 from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
 from models.model import Attention, AttentionBatchNorm, AttentionDropout, AttentionThirdConv, GatedAttention
+from models.fpn_mil_model import FPNMIL
 import visualize_features as vf
 
 
@@ -50,6 +51,12 @@ parser.add_argument('--model_num_maps', type=int, default=50,
                     help='Number of feature maps output by the convolutional layers (default: 50)')
 parser.add_argument('--model_kernel_size', type=int, default=5,
                     help='Kernel size for convolutional layers (default: 5)')
+parser.add_argument('--model_num_scales', type=int, default=3,
+                    help='FPN-MIL: number of pyramid scales / backbone stages (default: 3)')
+parser.add_argument('--model_dx', type=int, default=256,
+                    help='FPN-MIL: shared FPN channel dimension d_x (default: 256)')
+parser.add_argument('--model_base_channels', type=int, default=32,
+                    help='FPN-MIL: base channel count of the backbone (default: 32)')
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--path', type=str, default='../data/datasets/bags/mnist_bags.h5', metavar='H5',
@@ -229,7 +236,22 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_attention_branches": model.ATTENTION_BRANCHES,
                         "model_architecture": "AttentionDropout: Conv2d(1->20->50) -> FC(800->M->L) + Dropout(p=0.25)"
                     }
-                
+                elif args.model == 'fpn_mil':
+                    model = FPNMIL(in_channels=3 if args.rgb else 1,
+                                   base_channels=args.model_base_channels,
+                                   num_scales=args.model_num_scales,
+                                   d_x=args.model_dx, d=args.model_M, L=args.model_L,
+                                   kernel_size=args.model_kernel_size, gated=True)
+                    model_tags = {
+                        "model_M": args.model_M,
+                        "model_L": args.model_L,
+                        "model_kernel_size": args.model_kernel_size,
+                        "model_num_scales": args.model_num_scales,
+                        "model_dx": args.model_dx,
+                        "model_base_channels": args.model_base_channels,
+                        "model_architecture": f"FPN-MIL: {args.model_num_scales} scales, d_x={args.model_dx}, gated AbMIL + multi-scale aggregator"
+                    }
+
                 if args.cuda:
                     model.cuda()
 
@@ -383,7 +405,9 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                             metrics['accuracy'], metrics['precision'], metrics['recall'],
                             metrics['f1_score'], metrics['auc']))
 
-                    if len(all_instance_labels) > 0 and len(all_attention_weights) > 0:
+                    if (len(all_instance_labels) > 0 and len(all_attention_weights) > 0
+                            and "count_threshold" in all_runs_results
+                            and len(all_runs_results["count_threshold"]) > 0):
                         from sklearn.metrics import roc_auc_score
                         if len(set(all_instance_labels)) > 2:
                             all_instance_labels = np.where(np.array(all_instance_labels) == 9, 1, 0)  # Konvertiere Labels zu binär (positiv=1, negativ=0)
@@ -513,7 +537,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     mlflow.log_metric(f'{key}_std', std_value)
                     print(f"{key}: Mean = {mean_value:.4f}, Std = {std_value:.4f}")
             
-        if all_runs_results["count_truth"] and all_runs_results["count_pred"]:
+        if all_runs_results.get("count_truth") and all_runs_results.get("count_pred"):
             print("Logging aggregated counting artifacts...")
             
             fig, ax = plt.subplots(figsize=(8, 8))
