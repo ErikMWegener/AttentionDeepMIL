@@ -285,19 +285,29 @@ class FPNMIL(nn.Module):
 
         scale_probs = [torch.sigmoid(l) for l in scale_logits]
 
-        # Feinste-Skalen-Attention als flacher [1, n1]-Tensor, kompatibel zur
-        # `forward -> (Y_prob, Y_hat, A)`-Konvention der übrigen model.py-Modelle.
-        A_finest = inst_attention[0].reshape(1, -1)                # [1, K*h1*w1]
+        # Per-Patch-Attention [1, K] für Counting / Patch-Level-AUC:
+        # Die Pixel-Attention jeder Skala wird über die Patch-Fläche summiert
+        # (Attention-Masse pro Patch) und die Skalen werden mit den Multi-Scale-
+        # Scores gewichtet -- entspricht der aggregierten Heatmap aus Mourao et al.
+        # Ergebnis summiert zu 1 über die K Patches, analog zur Patch-Attention der
+        # übrigen model.py-Modelle (Schwellwert 1/K funktioniert identisch).
+        K = inst_attention[0].shape[0]
+        scale_scores = A_ms.squeeze(0)                             # [S], Summe = 1
+        A_patch = x.new_zeros(K)
+        for s, a in enumerate(inst_attention):
+            A_patch = A_patch + scale_scores[s] * a.reshape(K, -1).sum(dim=1)
+        A_patch = A_patch.unsqueeze(0)                             # [1, K], Summe = 1
 
         # Reichhaltige Ausgaben für Loss/Visualisierung zwischenspeichern.
         self._cache = {
             "ms_logit": ms_logit,
             "scale_logits": scale_logits,
             "scale_probs": scale_probs,
-            "scale_scores": A_ms.squeeze(0),
-            "inst_attention": inst_attention,
+            "scale_scores": scale_scores,
+            "inst_attention": inst_attention,   # Pixel-Heatmaps je Skala [K, h_s, w_s]
+            "patch_attention": A_patch,          # [1, K]
         }
-        return P_ms, Y_hat, A_finest
+        return P_ms, Y_hat, A_patch
 
     # -- Loss (klassen-gewichtete BCE, multi-scale + scale-specific) -------
     def calculate_objective(
@@ -323,7 +333,7 @@ class FPNMIL(nn.Module):
             self._cache)
         """
         Y = Y.float().view(1)
-        _, _, A_finest = self.forward(X)
+        _, _, A_patch = self.forward(X)
         ms_logit = self._cache["ms_logit"].view(1)
         scale_logits = [l.view(1) for l in self._cache["scale_logits"]]
 
@@ -334,7 +344,7 @@ class FPNMIL(nn.Module):
         ms_loss = bce(ms_logit)
         scale_loss = torch.stack([bce(l) for l in scale_logits]).mean()
         loss = ms_loss + scale_loss_weight * scale_loss
-        return loss, A_finest
+        return loss, A_patch
 
     def calculate_classification_error(self, X: torch.Tensor, Y: torch.Tensor):
         Y = Y.float()
@@ -343,15 +353,19 @@ class FPNMIL(nn.Module):
         return error, Y_hat
 
     def count_positive_instances(self, X: torch.Tensor, threshold: float = None):
-        """Zählt Feinste-Skalen-Pixel-Instanzen mit Attention über einem Schwellwert.
+        """Zählt Patches mit aggregierter Per-Patch-Attention über einem Schwellwert.
+
+        A ist die multi-skalige Per-Patch-Attention [1, K] (summiert zu 1), sodass
+        der Schwellwert 1/K -- wie bei den übrigen model.py-Modellen -- Patches mit
+        überdurchschnittlicher Attention zählt (vergleichbar mit Ground-Truth `count`).
 
         Returns:
-            count, A_finest, threshold
+            count, A, threshold
         """
         _, _, A = self.forward(X)
-        n = A.shape[1]
+        n = A.shape[1]  # = K (Anzahl Patches)
         if threshold is None:
-            threshold = 1.0 / n  # über-uniformer Schwellwert (Softmax-Attention)
+            threshold = 1.0 / n  # über-uniformer Schwellwert
         count = int((A.squeeze(0) > threshold).sum().item())
         return count, A, threshold
 
@@ -386,7 +400,7 @@ if __name__ == "__main__":
     scale_scores = model._cache["scale_scores"]
     inst_att = model._cache["inst_attention"]
     print(f"P_ms            : {P_ms.item():.4f}   Y_hat: {Y_hat.item()}")
-    print(f"Feinste Attn A  : {tuple(A_finest.shape)}")
+    print(f"Per-Patch Attn A: {tuple(A_finest.shape)}  (Summe {A_finest.sum().item():.3f})")
     print(f"Skalen-Probs P^s: {[round(p.item(), 4) for p in scale_probs]}")
     print(f"Multi-Scale a^s : {[round(a.item(), 4) for a in scale_scores]}  "
           f"(Summe {scale_scores.sum().item():.3f})")
