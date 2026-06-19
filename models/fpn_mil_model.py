@@ -44,14 +44,21 @@ import torch.nn.functional as F
 # ---------------------------------------------------------------------------
 # 1. Bottom-up Backbone (abgeleitet aus model.py feature_extractor_part1)
 # ---------------------------------------------------------------------------
-class ConvBNReLU(nn.Module):
-    """Ein Conv-BN-ReLU-Block im Stil von model.py (kernel_size konfigurierbar)."""
+class ConvGNReLU(nn.Module):
+    """Ein Conv-GroupNorm-ReLU-Block im Stil von model.py (kernel_size konfigurierbar).
 
-    def __init__(self, in_c: int, out_c: int, kernel_size: int = 5):
+    GroupNorm statt BatchNorm: Bei MIL ist jeder Forward-Pass *ein Bag* (K Patches
+    als "Batch"). BatchNorm würde im Training Bag-spezifische Statistiken nutzen,
+    bei eval aber die laufenden Mittelwerte – ein Train/Eval-Mismatch, der zu
+    Zufallsgenauigkeit führt. GroupNorm normalisiert pro Sample und verhält sich
+    in Training und Eval identisch (vgl. Commit bcaaef0 für die übrigen Modelle).
+    """
+
+    def __init__(self, in_c: int, out_c: int, kernel_size: int = 5, num_groups: int = 4):
         super().__init__()
         self.block = nn.Sequential(
             nn.Conv2d(in_c, out_c, kernel_size=kernel_size, padding=kernel_size // 2),
-            nn.BatchNorm2d(out_c),
+            nn.GroupNorm(num_groups=min(num_groups, out_c), num_channels=out_c),
             nn.ReLU(inplace=True),
         )
 
@@ -90,9 +97,9 @@ class BottomUpBackbone(nn.Module):
         c_out = base_channels
         self.out_channels: List[int] = []
         for _ in range(num_scales):
-            layers = [ConvBNReLU(c_in, c_out, kernel_size)]
+            layers = [ConvGNReLU(c_in, c_out, kernel_size)]
             for _ in range(blocks_per_stage - 1):
-                layers.append(ConvBNReLU(c_out, c_out, kernel_size))
+                layers.append(ConvGNReLU(c_out, c_out, kernel_size))
             layers.append(nn.MaxPool2d(kernel_size=2, stride=2))  # Downsample x2
             self.stages.append(nn.Sequential(*layers))
             self.out_channels.append(c_out)
