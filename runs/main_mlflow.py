@@ -350,6 +350,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     attention_agg = []
                     all_instance_labels = []  
                     all_attention_weights = []  
+                    all_thresholds = []
 
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(test_dataset):
@@ -379,10 +380,6 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                             
                             if args.log_attention_weights:
                                 attention_agg.append(attention_weights.cpu().numpy().tolist())
-                            
-                            if predicted_label.cpu().item() == 1:
-                                all_instance_labels.extend(instance_label.cpu().numpy().flatten().tolist()    )
-                                all_attention_weights.extend(attention_weights.cpu().numpy().flatten().tolist())
             
                             if args.naive_counting:
                                 if predicted_label.cpu().item() == 1:  # Nur zählen, wenn die Vorhersage positiv ist
@@ -393,6 +390,11 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                 count_truth.append(count)
                                 count_pred.append(predicted_count)
                                 all_runs_results["count_threshold"].append(threshold)
+
+                                if predicted_label.cpu().item() == 1:
+                                    all_instance_labels.extend(instance_label.cpu().numpy().flatten().tolist()    )
+                                    all_attention_weights.extend(attention_weights.cpu().numpy().flatten().tolist())
+                                    all_thresholds.extend([threshold] * len(instance_label.cpu().numpy().flatten().tolist()))
 
                     test_loss /= len(test_dataset)
                     test_error /= len(test_dataset)
@@ -408,18 +410,28 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     if (len(all_instance_labels) > 0 and len(all_attention_weights) > 0
                             and "count_threshold" in all_runs_results
                             and len(all_runs_results["count_threshold"]) > 0):
-                        from sklearn.metrics import roc_auc_score
+                        from sklearn.metrics import roc_auc_score, precision_score, recall_score
                         if len(set(all_instance_labels)) > 2:
                             all_instance_labels = np.where(np.array(all_instance_labels) == 9, 1, 0)  # Konvertiere Labels zu binär (positiv=1, negativ=0)
-                            print("Weights:" + len(all_attention_weights).__str__() + "\n" + "Thresholds:" + len(all_runs_results["count_threshold"]).__str__())
-                        all_attention_weights_converted = [1 if all_attention_weights[i] > all_runs_results["count_threshold"][i//100] else 0 for i in range(len(all_attention_weights))]
+                      #      print("Weights:" + len(all_attention_weights).__str__() + "\n" + "Thresholds:" + len(all_runs_results["count_threshold"]).__str__())
+                        all_attention_weights_converted = [1 if all_attention_weights[i] > all_thresholds[i] else 0 for i in range(len(all_attention_weights))]
                         patch_auc = roc_auc_score(all_instance_labels, all_attention_weights_converted)
-                        mlflow.log_metric('patch_level_auc', patch_auc)
+                        patch_precision = precision_score(all_instance_labels, all_attention_weights_converted, zero_division=0)
+                        patch_recall = recall_score(all_instance_labels, all_attention_weights_converted, zero_division=0)
+                        mlflow.log_metrics({
+                            'patch_level_auc': patch_auc,
+                            'patch_level_precision': patch_precision,
+                            'patch_level_recall': patch_recall,
+                        })
                         metrics['patch_level_auc'] = patch_auc
-                        print(f'Patch-Level AUC: {patch_auc:.4f}')
+                        metrics['patch_level_precision'] = patch_precision
+                        metrics['patch_level_recall'] = patch_recall
+                        print(f'Patch-Level AUC: {patch_auc:.4f}, Precision: {patch_precision:.4f}, Recall: {patch_recall:.4f}')
                     else:
                         patch_auc = 0
-                        print('Patch-Level AUC: Could not be computed (no positive bags)')
+                        patch_precision = 0
+                        patch_recall = 0
+                        print('Patch-Level AUC/Precision/Recall: Could not be computed (no positive bags)')
 
                     mlflow.log_metrics({"test_loss": test_loss,
                                         "test_error": test_error,
@@ -434,8 +446,10 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     
                     metrics['test_loss'] = test_loss
                     metrics['test_error'] = test_error
-                    metrics['patch_level_auc'] = patch_auc 
-                    
+                    metrics['patch_level_auc'] = patch_auc
+                    metrics['patch_level_precision'] = patch_precision
+                    metrics['patch_level_recall'] = patch_recall
+
                     if args.naive_counting and len(count_pred) > 0:
                         counting_metrics = calculate_counting_metrics(count_truth, count_pred)
                         metrics['counting_accuracy'] = counting_metrics['counting_accuracy']
