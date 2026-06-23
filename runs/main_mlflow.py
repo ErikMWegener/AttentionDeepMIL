@@ -57,6 +57,10 @@ parser.add_argument('--model_dx', type=int, default=256,
                     help='FPN-MIL: shared FPN channel dimension d_x (default: 256)')
 parser.add_argument('--model_base_channels', type=int, default=32,
                     help='FPN-MIL: base channel count of the backbone (default: 32)')
+parser.add_argument('--clam_k_sample', type=int, default=8,
+                    help='Anzahl Top-/Bottom-Instanzen fuer CLAM Instance Clustering')
+parser.add_argument('--clam_bag_weight', type=float, default=0.7,
+                    help='Gewicht des Bag-Loss im kombinierten CLAM-Loss')
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--path', type=str, default='../data/datasets/bags/mnist_bags.h5', metavar='H5',
@@ -251,6 +255,22 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_base_channels": args.model_base_channels,
                         "model_architecture": f"FPN-MIL: {args.model_num_scales} scales, d_x={args.model_dx}, gated AbMIL + multi-scale aggregator"
                     }
+                elif args.model == 'clam':
+                    from models.clam_model import CLAM
+                    model = CLAM(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps,
+                                kernel_size=args.model_kernel_size, pool_size=args.model_pool_size,
+                                in_channels=3 if args.rgb else 1,
+                                k_sample=args.clam_k_sample, dropout=0.25)
+                    model_tags = {
+                        "model_M": model.M,
+                        "model_L": model.L,
+                        "model_pool_size": model.pool_size,
+                        "model_num_maps": model.num_maps,
+                        "model_kernel_size": model.kernel_size,
+                        "model_k_sample": model.k_sample,
+                        "model_architecture": "CLAM_SB (gated attn + instance classifier)"
+    }
+            
 
                 if args.cuda:
                     model.cuda()
@@ -272,12 +292,22 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         # reset gradients
                         optimizer.zero_grad()
                         # calculate loss and metrics
-                        loss, _ = model.calculate_objective(patches, bag_label)
-                        train_loss += loss.item()
+                        if args.model == 'clam':
+                            total_loss, _, bag_loss, inst_loss = model.calculate_objective(
+                                patches, bag_label, instance_eval=True, bag_weight=args.clam_bag_weight
+                            )
+                            train_loss += total_loss.item()
+                            train_bag_loss += bag_loss.item()
+                            train_inst_loss += inst_loss.item() if torch.is_tensor(inst_loss) else float(inst_loss)
+                            total_loss.backward()
+                        else:
+                            loss, _ = model.calculate_objective(patches, bag_label)
+                            train_loss += loss.item()
+                            loss.backward()
+
                         error, _ = model.calculate_classification_error(patches, bag_label)
                         train_error += error
                         # backward pass
-                        loss.backward()
                         # step
                         optimizer.step()
 
@@ -288,8 +318,13 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     # Log training loss and error to MLflow
                     mlflow.log_metric('train_loss', train_loss, step=epoch)
                     mlflow.log_metric('train_error', train_error, step=epoch)
-
-                    print('Epoch: {}, Loss: {:.4f}, Train error: {:.4f}'.format(epoch, train_loss, train_error))
+                    if args.model == 'clam':
+                        mlflow.log_metric('train_bag_loss', train_bag_loss / n, step=epoch)
+                        mlflow.log_metric('train_instance_loss', train_inst_loss / n, step=epoch)
+                        print('Epoch: {}, Loss: {:.4f} (bag {:.4f} / inst {:.4f}), Train error: {:.4f}'.format(
+                            epoch, train_loss, train_bag_loss / n, train_inst_loss /n, train_error))
+                    else:
+                        print('Epoch: {}, Loss: {:.4f}, Train error: {:.4f}'.format(epoch, train_loss, train_error))
 
                 def validate(epoch):
                     model.eval()
@@ -306,19 +341,31 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                             
                             patches = patches.squeeze(0)
 
-                            Y_prob, predicted_label, _ = model(patches)
+                            if args.model == 'clam':
+                                logits, Y_prob_full, predicted_label, _, _ = model(patches)
+                                prob_pos = Y_prob_full[0, 1]                    # P(positiv)
+                                loss = F.cross_entropy(logits, bag_label.long().view(-1))
+                                val_loss += loss.item()
+                                pred = predicted_label.view(-1).float()
+                                error = 1. - pred.eq(bag_label.float().view(-1)).cpu().float().mean().item()
+                                val_error += error
+                                y_prob.append(prob_pos.cpu().item())
+                                y_pred.append(pred.cpu().item())
+                            else:
+                                Y_prob, predicted_label, _ = model(patches)
 
-                            bag_label_f = bag_label.float()
-                            Y_prob_clamped = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-                            loss = -1. * (bag_label_f * torch.log(Y_prob_clamped) + (1. - bag_label_f) * torch.log(1. - Y_prob_clamped))
-                            val_loss += loss.item()
-                            error = 1. - predicted_label.eq(bag_label_f).cpu().float().mean().data.item()
-                            val_error += error
+                                bag_label_f = bag_label.float()
+                                Y_prob_clamped = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
+                                loss = -1. * (bag_label_f * torch.log(Y_prob_clamped) + (1. - bag_label_f) * torch.log(1. - Y_prob_clamped))
+                                val_loss += loss.item()
+                                error = 1. - predicted_label.eq(bag_label_f).cpu().float().mean().data.item()
+                                val_error += error
+
+                                
+                                y_pred.append(predicted_label.cpu().item())
+                                y_prob.append(Y_prob.cpu().item())
 
                             y_true.append(bag_label.cpu().item())
-                            y_pred.append(predicted_label.cpu().item())
-                            y_prob.append(Y_prob.cpu().item())
-
                     val_loss /= len(val_dataset)
                     val_error /= len(val_dataset)   
 
@@ -352,6 +399,9 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     all_attention_weights = []  
                     all_thresholds = []
 
+                    patch_inst_labels = []
+                    patch_inst_scores = []
+
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(test_dataset):
                             if args.cuda:
@@ -359,31 +409,55 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                             patches = patches.squeeze(0)  # Entfernt die Batch-Dimension, da sie 1 ist
 
-                            # Single forward pass to avoid redindant computation
-                            Y_prob, predicted_label, attention_weights = model(patches)
-                            
-                            bag_label_f = bag_label.float()
-                            Y_prob_clamped = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-                            loss = -1. * (bag_label_f * torch.log(Y_prob_clamped) + (1. - bag_label_f) * torch.log(1. - Y_prob_clamped))
-                            test_loss += loss.item()
-                            error = 1. - predicted_label.eq(bag_label_f).cpu().float().mean().data.item()
-                            test_error += error
+                            if args.model == 'clam':
+                                logits, Y_prob_full, predicted_label, A_raw, _ = model(patches)
+                                prob_pos = Y_prob_full[0, 1]
+                                loss = F.cross_entropy(logits, bag_label.long().view(-1))
+                                test_loss += loss.item()
+                                pred = predicted_label.view(-1).float()
+                                error = 1. - pred.eq(bag_label.float().view(-1)).cpu().float().mean().item()
+                                test_error += error
+                                y_prob.append(prob_pos.cpu().item())
+                                y_pred.append(pred.cpu().item())
 
-                            y_true.append(bag_label.cpu().item())
-                            y_pred.append(predicted_label.cpu().item())
-                            y_prob.append(Y_prob.cpu().item())
+                                # Instanz-Scores aus dem Instanz-Klassifikator (NICHT aus Attention)
+                                _, inst_probs = model.count_positive_instances(patches.unsqueeze(0), threshold=0.5)
+                                inst_lbl = instance_label.cpu().numpy().flatten()
+                                if len(set(inst_lbl.tolist())) > 2:        # MNIST Multi-Class -> binaer
+                                    inst_lbl = (inst_lbl == 9).astype(int)
+                                m = min(len(inst_lbl), inst_probs.shape[0])
+                                patch_inst_labels.extend(inst_lbl[:m].tolist())
+                                patch_inst_scores.extend(inst_probs[:m].cpu().numpy().tolist())
+                            else:
+                                # Single forward pass to avoid redindant computation
+                                Y_prob, predicted_label, attention_weights = model(patches)
+                                
+                                bag_label_f = bag_label.float()
+                                Y_prob_clamped = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
+                                loss = -1. * (bag_label_f * torch.log(Y_prob_clamped) + (1. - bag_label_f) * torch.log(1. - Y_prob_clamped))
+                                test_loss += loss.item()
+                                error = 1. - predicted_label.eq(bag_label_f).cpu().float().mean().data.item()
+                                test_error += error
+
+                                y_pred.append(predicted_label.cpu().item())
+                                y_prob.append(Y_prob.cpu().item())
                             
+                            y_true.append(bag_label.cpu().item())
+
                             all_runs_results["seeds"].append(seed)
                             all_runs_results["bag_ids"].append(batch_idx)
                             all_runs_results["truth"].append(bag_label.cpu().item())
                             all_runs_results["predicted"].append(predicted_label.cpu().item())
                             
-                            if args.log_attention_weights:
+                            if args.log_attention_weights and model != 'clam':
                                 attention_agg.append(attention_weights.cpu().numpy().tolist())
             
                             if args.naive_counting:
                                 if predicted_label.cpu().item() == 1:  # Nur zählen, wenn die Vorhersage positiv ist
-                                    predicted_count, _, threshold = model.count_positive_instances(patches)
+                                    if args.model == 'clam':
+                                        predicted_count, _ = model.count_positive_instances(patches.unsqueeze(0))
+                                    else:
+                                        predicted_count, _, threshold = model.count_positive_instances(patches)
                                 else:
                                     predicted_count = 0
                                     threshold = 0
