@@ -26,6 +26,7 @@ import visualize_features as vf
 # Get arguments from command line
 parser = argparse.ArgumentParser(description='Testing Atteintion MIL models on datasets loaded from H5 files.')
 
+#Base parameters
 parser.add_argument('--config', type=str, default=None, metavar='CONFIG',
                     help='path to YAML config file (default: None)')
 parser.add_argument('--epochs', type=int, default=20, metavar='N',
@@ -40,6 +41,7 @@ parser.add_argument('--seeds', nargs='+', type=int, default=[1], metavar='S',
                     help='list of random seeds (default: 1)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
+# Model parameters
 parser.add_argument('--model', type=str, default='attention', 
                     help='Choose b/w attention and gated_attention')
 parser.add_argument('--model_M', type=int, default=500,
@@ -54,30 +56,35 @@ parser.add_argument('--model_kernel_size', type=int, default=5,
                     help='Kernel size for convolutional layers (default: 5)')
 parser.add_argument('--model_num_scales', type=int, default=3,
                     help='FPN-MIL: number of pyramid scales / backbone stages (default: 3)')
+parser.add_argument('--attention_activation', type=str, default='softmax', choices=['sigmoid', 'min_max', 'softmax', 'sparsemax', "softmax_temperature", "entmax"],
+                    help='activation function for attention weights (default: softmax)')
+parser.add_argument('--rgb', action='store_true', default=False,
+                    help='use RGB input instead of grayscale')
+#FPN parameters
 parser.add_argument('--model_dx', type=int, default=256,
                     help='FPN-MIL: shared FPN channel dimension d_x (default: 256)')
 parser.add_argument('--model_base_channels', type=int, default=32,
                     help='FPN-MIL: base channel count of the backbone (default: 32)')
+#CLAM parameters
 parser.add_argument('--clam_k_sample', type=int, default=8,
                     help='Anzahl Top-/Bottom-Instanzen fuer CLAM Instance Clustering')
 parser.add_argument('--clam_bag_weight', type=float, default=0.7,
                     help='Gewicht des Bag-Loss im kombinierten CLAM-Loss')
+#Data parameters
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
 parser.add_argument('--path', type=str, default='../data/datasets/bags/mnist_bags.h5', metavar='H5',
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
+# MLflow parameters
 parser.add_argument('--exp_name', type=str, default=None, metavar='EXP',
                     help='name of the MLflow experiment (default: default)')
 parser.add_argument('--run_name', type=str, default=None, metavar='RUN',
                     help='name of the MLflow run (default: None)')
-parser.add_argument('--attention_activation', type=str, default='softmax', choices=['sigmoid', 'min_max', 'softmax', 'sparsemax', "softmax_temperature", "entmax"],
-                    help='activation function for attention weights (default: softmax)')
 parser.add_argument('--log_attention_weights', action='store_true', default=False,
                     help='log attention weights as artifact in MLflow')
 parser.add_argument('--visualize_features', action='store_true', default=False,
                     help='visualize extracted features using UMAP and log the plot to MLflow')
-parser.add_argument('--rgb', action='store_true', default=False,
-                    help='use RGB input instead of grayscale')
+
 
 config_parser = argparse.ArgumentParser(description='Config file parser', add_help=False)
 config_parser.add_argument('--config', type=str, default=None, metavar='CONFIG')
