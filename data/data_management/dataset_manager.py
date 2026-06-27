@@ -73,6 +73,18 @@ class DatasetReader(torch.utils.data.Dataset):
                 instance_label = torch.from_numpy(instance_label[:])
         return patches, coords, label, count, instance_label
     
+    def list_datasets(self):
+        """List all top-level datasets in the H5 file"""
+        with h5py.File(self.path, 'r') as f:
+            return list(f.keys())
+
+    def list_all_items(self):
+        """Print hierarchical structure of all items in the H5 file"""
+        with h5py.File(self.path, 'r') as f:
+            def print_structure(name, obj):
+                print(name)
+            f.visititems(print_structure)
+
     def analyze_count_distribution(self):
         """
         Analysiert die Verteilung von count-Werten im Dataset.
