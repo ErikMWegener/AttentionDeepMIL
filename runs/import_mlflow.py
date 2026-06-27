@@ -37,20 +37,33 @@ SKIP_TAGS = {
 
 
 def normalize_uri(path_or_uri: str) -> str:
-    """Stellt sicher, dass der Tracking-URI das file://-Präfix trägt."""
+    """Stellt sicher, dass der Tracking-URI ein gültiges Präfix trägt."""
     p = path_or_uri.strip()
+    if p.startswith("sqlite:///") or p.startswith("http"):
+        return p
     if not p.startswith("file://"):
         p = "file://" + str(Path(p).resolve())
     return p
 
 
-def artifact_root(mlruns_dir: str, experiment_id: str, run_id: str) -> Path:
+def find_artifact_dir(
+    src_run,
+    source_artifacts_dir: str | None,
+    src_mlruns_dir: str | None,
+) -> Path:
     """
-    Leitet den tatsächlichen Artifact-Pfad aus der mlruns-Verzeichnisstruktur ab.
-    Robust gegenüber absoluten Pfaden in meta.yaml, die auf dem Cluster-System
-    basieren und lokal nicht existieren.
+    Lokalen Artifact-Pfad für einen Run ermitteln.
+
+    - SQLite-Modus:  source_artifacts_dir/<exp_id>/<run_id>/artifacts/
+    - File-Modus:    src_mlruns_dir/<exp_id>/<run_id>/artifacts/
     """
-    return Path(mlruns_dir) / experiment_id / run_id / "artifacts"
+    exp_id = src_run.info.experiment_id
+    run_id = src_run.info.run_id
+    if source_artifacts_dir:
+        return Path(source_artifacts_dir) / exp_id / run_id / "artifacts/"
+    if src_mlruns_dir:
+        return Path(src_mlruns_dir) / exp_id / run_id / "artifacts/"
+    return Path(src_run.info.artifact_uri.replace("file://", ""))
 
 
 def import_run(
@@ -59,7 +72,8 @@ def import_run(
     src_run,
     tgt_experiment_id: str,
     run_id_map: dict,
-    src_mlruns: str,
+    src_mlruns: str | None,
+    source_artifacts_dir: str | None,
     dry_run: bool,
 ) -> str:
     """
@@ -131,7 +145,7 @@ def import_run(
         print(f"      {total_metric_points} Metrik-Punkte für {len(metric_keys)} Keys geloggt")
 
     # --- Artifacts ---
-    src_artifact_dir = artifact_root(src_mlruns, src_run.info.experiment_id, src_id)
+    src_artifact_dir = find_artifact_dir(src_run, source_artifacts_dir, src_mlruns)
     if src_artifact_dir.exists():
         tgt_artifact_uri = tgt_run.info.artifact_uri.replace("file://", "")
         tgt_artifact_dir = Path(tgt_artifact_uri)
@@ -175,7 +189,8 @@ def import_experiment(
     src_client: MlflowClient,
     tgt_client: MlflowClient,
     src_exp,
-    src_mlruns: str,
+    src_mlruns: str | None,
+    source_artifacts_dir: str | None,
     dry_run: bool,
 ) -> int:
     """Importiert alle Runs eines Experiments."""
@@ -224,6 +239,7 @@ def import_experiment(
             tgt_experiment_id=tgt_exp_id,
             run_id_map=run_id_map,
             src_mlruns=src_mlruns,
+            source_artifacts_dir=source_artifacts_dir,
             dry_run=dry_run,
         )
         run_id_map[src_run.info.run_id] = tgt_id
@@ -237,13 +253,21 @@ def main():
     )
     parser.add_argument(
         "--source",
-        required=True,
-        help="Pfad zum geclusterten mlruns-Verzeichnis (nach rsync). "
-             "Kann ein relativer Pfad oder eine file://-URI sein.",
+        default="sqlite:///./cluster_mlruns_staging3/mlflow.db",
+        help="Tracking-URI der Quelle. Beispiele:\n"
+             "  sqlite:///./staging/mlflow.db   (SQLite nach rsync)\n"
+             "  ./cluster_mlruns_staging        (altes file-Backend)",
+    )
+    parser.add_argument(
+        "--source-artifacts",
+        default="./staging/mlruns",
+        metavar="DIR",
+        help="Lokaler Pfad zum gersynten mlartifacts/- oder mlruns/-Verzeichnis "
+             "(nur bei SQLite-Quelle nötig, z.B. ./staging/mlartifacts).",
     )
     parser.add_argument(
         "--target",
-        default="./mlruns",
+        default="sqlite:///./mlflow.db",
         help="Lokale MLflow Tracking URI / mlruns-Verzeichnis (default: ./mlruns).",
     )
     parser.add_argument(
@@ -262,16 +286,21 @@ def main():
     src_uri = normalize_uri(args.source)
     tgt_uri = normalize_uri(args.target)
 
-    # Absoluten Pfad zum mlruns-Verzeichnis für Artifact-Kopierpfade ableiten
-    src_mlruns = src_uri.replace("file://", "")
+    # Für file-basierte Quellen: Pfad für Artifact-Rekonstruktion
+    src_mlruns = None
+    if src_uri.startswith("file://"):
+        src_mlruns = src_uri.replace("file://", "")
+        if not Path(src_mlruns).exists():
+            print(f"FEHLER: Quell-Verzeichnis nicht gefunden: {src_mlruns}", file=sys.stderr)
+            sys.exit(1)
 
-    if not Path(src_mlruns).exists():
-        print(f"FEHLER: Quell-Verzeichnis nicht gefunden: {src_mlruns}", file=sys.stderr)
-        sys.exit(1)
+    source_artifacts_dir = args.source_artifacts
 
     print("=" * 60)
     print("MLflow Import: Cluster → Lokal")
     print(f"  Quelle:  {src_uri}")
+    if source_artifacts_dir:
+        print(f"  Artifacts: {source_artifacts_dir}")
     print(f"  Ziel:    {tgt_uri}")
     if args.dry_run:
         print("  Modus:   DRY-RUN (kein Schreiben)")
@@ -300,6 +329,7 @@ def main():
             tgt_client=tgt_client,
             src_exp=exp,
             src_mlruns=src_mlruns,
+            source_artifacts_dir=source_artifacts_dir,
             dry_run=args.dry_run,
         )
         total_runs += n

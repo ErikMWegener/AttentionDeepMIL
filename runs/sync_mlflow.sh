@@ -12,13 +12,14 @@ set -euo pipefail
 # ============================================================
 # Konfiguration – hier anpassen
 # ============================================================
-CLUSTER_USER="<5-Steller>"
+CLUSTER_USER="amfuk"
 CLUSTER_HOST="mcgarret.informatik.uni-halle.de"
-PROJECT_NAME="mil_project"
-CLUSTER_MLRUNS="/zpool1/slurm_data/${CLUSTER_USER}/${PROJECT_NAME}/mlruns"
+PROJECT_NAME="AttentionDeepMIL"
+CLUSTER_MLRUNS="${PROJECT_NAME}/runs/"
+CLUSTER_RUN_ID=$1
 
 # Lokales Zielverzeichnis (Staging-Bereich, NICHT direkt mlruns!)
-LOCAL_STAGING="./cluster_mlruns_staging"
+LOCAL_STAGING="./staging"
 # ============================================================
 
 JOB_ID="${1:-unbekannt}"
@@ -38,7 +39,11 @@ mkdir -p "${LOCAL_STAGING}"
 #   --progress → Fortschritt anzeigen
 #   --delete   → auf Staging-Seite löschen was auf Cluster nicht mehr existiert
 rsync -avz --progress --delete \
-  "${CLUSTER_USER}@${CLUSTER_HOST}:${CLUSTER_MLRUNS}/" \
+  "${CLUSTER_USER}@${CLUSTER_HOST}:${CLUSTER_MLRUNS}/mlflow_${CLUSTER_RUN_ID}.db" \
+  "${LOCAL_STAGING}/"
+
+rsync -avz --progress --delete \
+  "${CLUSTER_USER}@${CLUSTER_HOST}:${CLUSTER_MLRUNS}/mlruns" \
   "${LOCAL_STAGING}/"
 
 echo ""
@@ -51,6 +56,8 @@ echo "    --source \"${LOCAL_STAGING}\" \\"
 echo "    --target \"./mlruns\""
 echo ""
 echo "Oder mit expliziter file://-URI:"
-echo "  python import_mlflow.py \\"
-echo "    --source \"file://\$(pwd)/${LOCAL_STAGING}\" \\"
-echo "    --target \"file://\$(pwd)/mlruns\""
+echo "  python import_mlflow.py \
+          --source   "sqlite:///${LOCAL_STAGING}/mlflow.db" \
+          --source-artifacts "${LOCAL_STAGING}/mlartifacts" \
+          --target   "sqlite:///./mlflow.db""
+          
