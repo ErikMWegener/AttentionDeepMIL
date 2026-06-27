@@ -14,6 +14,7 @@ import mlflow.data as mlfdata
 import matplotlib.pyplot as plt
 import yaml
 import pandas as pd
+import torch.nn.functional as F
 
 from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
@@ -269,7 +270,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_kernel_size": model.kernel_size,
                         "model_k_sample": model.k_sample,
                         "model_architecture": "CLAM_SB (gated attn + instance classifier)"
-    }
+                    }
             
 
                 if args.cuda:
@@ -282,6 +283,8 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     model.train()
                     train_loss = 0.
                     train_error = 0.
+                    train_bag_loss = 0.
+                    train_inst_loss = 0.
                     for batch_idx, (patches, coords, label, count, instance_label) in enumerate(train_dataset):
                         bag_label = label
                         if args.cuda:
@@ -315,14 +318,17 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     train_loss /= len(train_dataset)
                     train_error /= len(train_dataset)
 
+                    train_inst_loss /= len(train_dataset)
+                    train_bag_loss /= len(train_dataset)
+
                     # Log training loss and error to MLflow
                     mlflow.log_metric('train_loss', train_loss, step=epoch)
                     mlflow.log_metric('train_error', train_error, step=epoch)
                     if args.model == 'clam':
-                        mlflow.log_metric('train_bag_loss', train_bag_loss / n, step=epoch)
-                        mlflow.log_metric('train_instance_loss', train_inst_loss / n, step=epoch)
+                        mlflow.log_metric('train_bag_loss', train_bag_loss , step=epoch)
+                        mlflow.log_metric('train_instance_loss', train_inst_loss , step=epoch)
                         print('Epoch: {}, Loss: {:.4f} (bag {:.4f} / inst {:.4f}), Train error: {:.4f}'.format(
-                            epoch, train_loss, train_bag_loss / n, train_inst_loss /n, train_error))
+                            epoch, train_loss, train_bag_loss, train_inst_loss, train_error))
                     else:
                         print('Epoch: {}, Loss: {:.4f}, Train error: {:.4f}'.format(epoch, train_loss, train_error))
 
@@ -406,7 +412,8 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(test_dataset):
                             if args.cuda:
                                 patches, bag_label = patches.cuda(), label.cuda()
-
+                            else:
+                                bag_label = label
                             patches = patches.squeeze(0)  # Entfernt die Batch-Dimension, da sie 1 ist
 
                             if args.model == 'clam':
@@ -449,13 +456,14 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                             all_runs_results["truth"].append(bag_label.cpu().item())
                             all_runs_results["predicted"].append(predicted_label.cpu().item())
                             
-                            if args.log_attention_weights and model != 'clam':
+                            if args.log_attention_weights and args.model != 'clam':
                                 attention_agg.append(attention_weights.cpu().numpy().tolist())
             
                             if args.naive_counting:
                                 if predicted_label.cpu().item() == 1:  # Nur zählen, wenn die Vorhersage positiv ist
                                     if args.model == 'clam':
                                         predicted_count, _ = model.count_positive_instances(patches.unsqueeze(0))
+                                        threshold = None
                                     else:
                                         predicted_count, _, threshold = model.count_positive_instances(patches)
                                 else:
@@ -465,7 +473,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                 count_pred.append(predicted_count)
                                 all_runs_results["count_threshold"].append(threshold)
 
-                                if predicted_label.cpu().item() == 1:
+                                if predicted_label.cpu().item() == 1 and args.model != 'clam':
                                     all_instance_labels.extend(instance_label.cpu().numpy().flatten().tolist()    )
                                     all_attention_weights.extend(attention_weights.cpu().numpy().flatten().tolist())
                                     all_thresholds.extend([threshold] * len(instance_label.cpu().numpy().flatten().tolist()))
@@ -501,6 +509,27 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         metrics['patch_level_precision'] = patch_precision
                         metrics['patch_level_recall'] = patch_recall
                         print(f'Patch-Level AUC: {patch_auc:.4f}, Precision: {patch_precision:.4f}, Recall: {patch_recall:.4f}')
+                    elif args.model == 'clam' and len(patch_inst_labels) > 0:
+                        from sklearn.metrics import roc_auc_score, precision_score, recall_score
+                        inst_labels_arr = np.array(patch_inst_labels)
+                        inst_scores_arr = np.array(patch_inst_scores)
+                        inst_preds = (inst_scores_arr >= 0.5).astype(int)
+                        if len(set(patch_inst_labels)) > 1:
+                            patch_auc = roc_auc_score(inst_labels_arr, inst_scores_arr)
+                        else:
+                            patch_auc = 0.0
+                        patch_precision = precision_score(inst_labels_arr, inst_preds, zero_division=0)
+                        patch_recall = recall_score(inst_labels_arr, inst_preds, zero_division=0)
+                        mlflow.log_metrics({
+                            'patch_level_auc': patch_auc,
+                            'patch_level_precision': patch_precision,
+                            'patch_level_recall': patch_recall,
+                        })
+                        metrics['patch_level_auc'] = patch_auc
+                        metrics['patch_level_precision'] = patch_precision
+                        metrics['patch_level_recall'] = patch_recall
+                        print(f'Patch-Level AUC (inst. clf.): {patch_auc:.4f}, '
+                              f'Precision: {patch_precision:.4f}, Recall: {patch_recall:.4f}')
                     else:
                         patch_auc = 0
                         patch_precision = 0
