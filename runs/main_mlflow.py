@@ -70,6 +70,8 @@ parser.add_argument('--clam_k_sample', type=int, default=8,
                     help='Anzahl Top-/Bottom-Instanzen fuer CLAM Instance Clustering')
 parser.add_argument('--clam_bag_weight', type=float, default=0.7,
                     help='Gewicht des Bag-Loss im kombinierten CLAM-Loss')
+parser.add_argument('--clam_pseudo_threshold', action='store_true', default=False,
+                    help='Use pseudo-thresholding for instance loss in CLAM (default: False)')
 #Data parameters
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
@@ -268,7 +270,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     model = CLAM(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps,
                                 kernel_size=args.model_kernel_size, pool_size=args.model_pool_size,
                                 in_channels=3 if args.rgb else 1,
-                                k_sample=args.clam_k_sample, dropout=0.25)
+                                k_sample=args.clam_k_sample, pseudo_threshold=args.clam_pseudo_threshold, dropout=0.25)
                     model_tags = {
                         "model_M": model.M,
                         "model_L": model.L,
@@ -276,6 +278,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_num_maps": model.num_maps,
                         "model_kernel_size": model.kernel_size,
                         "model_k_sample": model.k_sample,
+                        "model_pseudo_threshold": model.pseudo_threshold,
                         "model_architecture": "CLAM_SB (gated attn + instance classifier)"
                     }
             

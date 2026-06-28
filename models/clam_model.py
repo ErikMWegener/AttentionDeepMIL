@@ -45,7 +45,7 @@ class AttnNetGated(nn.Module):
 
 class CLAM(nn.Module):
     def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4,
-                 in_channels=3, k_sample=8, dropout=0.25,
+                 in_channels=3, k_sample=8, pseudo_threshold = False, dropout=0.25,
                  instance_loss_fn=None, subtyping=False):
         super().__init__()
         self.M = M
@@ -54,6 +54,7 @@ class CLAM(nn.Module):
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.k_sample = k_sample
+        self.pseudo_threshold = pseudo_threshold
         self.subtyping = subtyping
         self.instance_loss_fn = instance_loss_fn if instance_loss_fn is not None else nn.CrossEntropyLoss()
 
@@ -125,6 +126,33 @@ class CLAM(nn.Module):
         loss = self.instance_loss_fn(logits, targets)
         return loss, preds, targets
 
+    def inst_eval_threshold(self, A, h, label_is_pos):
+        """Pseudo-Labels ueber Attention-Schwelle statt festem Top-k.
+        Skaliert mit der tatsaechlichen Positiv-Zahl der Bag."""
+        device = h.device
+        if len(A.shape) == 1:
+            A = A.view(1, -1)
+        A_flat = A.view(-1)
+
+        if label_is_pos:
+            # Adaptiv: alles ueber Median-Attention ist pseudo-positiv,
+            # unteres Quartil pseudo-negativ. Mittelfeld bleibt ungelabelt.
+            thr_pos = torch.quantile(A_flat, 0.5)
+            thr_neg = torch.quantile(A_flat, 0.25)
+            pos_ids = (A_flat >= thr_pos).nonzero(as_tuple=True)[0]
+            neg_ids = (A_flat <= thr_neg).nonzero(as_tuple=True)[0]
+            pos_inst = torch.index_select(h, 0, pos_ids)
+            neg_inst = torch.index_select(h, 0, neg_ids)
+            targets = torch.cat([self.create_positive_targets(len(pos_ids), device),
+                                self.create_negative_targets(len(neg_ids), device)])
+            instances = torch.cat([pos_inst, neg_inst], dim=0)
+        else:
+            # negative Bag: alle negativ (wie inst_eval_out)
+            instances = h
+            targets = self.create_negative_targets(h.shape[0], device)
+
+        logits = self.instance_classifier(instances)
+        return self.instance_loss_fn(logits, targets)
     # -- Forward --------------------------------------------------------------
 
     def forward(self, x, label=None, instance_eval=False):
@@ -143,11 +171,14 @@ class CLAM(nn.Module):
         instance_loss = torch.tensor(0.0, device=H.device)
         if instance_eval and label is not None:
             lbl = int(label.item())
-            if lbl == 1:
-                instance_loss, _, _ = self.inst_eval(A, H)        # positive Bag
+            if self.pseudo_threshold:
+                instance_loss = self.inst_eval_threshold(A, H, label_is_pos=(lbl == 1))
             else:
-                # [ANPASSUNG 3]: bei dir immer aktiv (negative Bags sind rein negativ)
-                instance_loss, _, _ = self.inst_eval_out(A, H)    # negative Bag
+                if lbl == 1:
+                    instance_loss, _, _ = self.inst_eval(A, H)        # positive Bag
+                else:
+                    # [ANPASSUNG 3]: bei dir immer aktiv (negative Bags sind rein negativ)
+                    instance_loss, _, _ = self.inst_eval_out(A, H)    # negative Bag
 
         # -- Bag-Aggregation und -Klassifikation ------------------------------
         Mvec = torch.mm(A, H)                # [1, M]
@@ -175,6 +206,7 @@ class CLAM(nn.Module):
 
     def count_positive_instances(self, X):
         """Zaehlen ueber den Instanz-Klassifikator (direkter als Attention-Threshold)."""
+        import otsu
         self.eval()
         with torch.no_grad():
             x = X.squeeze(0)
