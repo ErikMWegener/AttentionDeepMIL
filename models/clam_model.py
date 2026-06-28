@@ -173,11 +173,13 @@ class CLAM(nn.Module):
         error = 1. - Y_hat.view(-1).eq(Y).cpu().float().mean().item()
         return error, Y_hat
 
-    def count_positive_instances(self, X, threshold=0.5):
+    def count_positive_instances(self, X):
         """Zaehlen ueber den Instanz-Klassifikator (direkter als Attention-Threshold)."""
         self.eval()
         with torch.no_grad():
             x = X.squeeze(0)
+            K = x.shape[0]
+            threshold = 1/K
             H = self.feature_extractor_part1(x)
             H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
             H = self.feature_extractor_part2(H)
