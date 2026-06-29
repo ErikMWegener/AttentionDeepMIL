@@ -204,7 +204,7 @@ class CLAM(nn.Module):
         error = 1. - Y_hat.view(-1).eq(Y).cpu().float().mean().item()
         return error, Y_hat
 
-    def count_positive_instances(self, X):
+    def count_positive_instances(self, X, threshold=0.5):
         """Zaehlen ueber den Instanz-Klassifikator (direkter als Attention-Threshold)."""
         import otsu
         self.eval()
@@ -219,7 +219,7 @@ class CLAM(nn.Module):
             count = int((inst_probs > threshold).sum().item())
         return count, inst_probs
 
-    def extract_features(self, x, threshold=0.5):
+    def extract_features(self, x):
         """Fuer visualize_features.py (t-SNE/UMAP)."""
         self.eval()
         with torch.no_grad():
