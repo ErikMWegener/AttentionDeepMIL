@@ -508,29 +508,24 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                       #      print("Weights:" + len(all_attention_weights).__str__() + "\n" + "Thresholds:" + len(all_runs_results["count_threshold"]).__str__())
                         all_attention_weights_converted = [1 if all_attention_weights[i] > all_thresholds[i] else 0 for i in range(len(all_attention_weights))]
                         conv_patch_auc = roc_auc_score(all_instance_labels, all_attention_weights_converted)
-                        conv_patch_precision = precision_score(all_instance_labels, all_attention_weights_converted, zero_division=0)
-                        conv_patch_recall = recall_score(all_instance_labels, all_attention_weights_converted, zero_division=0)
 
                         patch_auc = roc_auc_score(all_instance_labels, all_attention_weights)
-                        patch_precision = precision_score(all_instance_labels, all_attention_weights, zero_division=0)
-                        patch_recall = recall_score(all_instance_labels, all_attention_weights, zero_division=0)
+                        patch_precision = precision_score(all_instance_labels, all_attention_weights_converted, zero_division=0)
+                        patch_recall = recall_score(all_instance_labels, all_attention_weights_converted, zero_division=0)
                         mlflow.log_metrics({
                             'patch_level_auc': patch_auc,
                             'patch_level_precision': patch_precision,
                             'patch_level_recall': patch_recall,
                             'patch_level_auc_converted': conv_patch_auc,
-                            'patch_level_precision_converted': conv_patch_precision,
-                            'patch_level_recall_converted': conv_patch_recall
                         })
                         metrics['patch_level_auc'] = patch_auc
                         metrics['patch_level_precision'] = patch_precision
                         metrics['patch_level_recall'] = patch_recall
 
                         metrics['patch_level_auc_converted'] = conv_patch_auc
-                        metrics['patch_level_precision_converted'] = conv_patch_precision
-                        metrics['patch_level_recall_converted'] = conv_patch_recall
 
-                        print(f'Patch-Level AUC (conv): {patch_auc:.4f} ({conv_patch_auc:.4f}), Precision (conv): {patch_precision:.4f} ({conv_patch_precision:.4f}), Recall (conv): {patch_recall:.4f} ({conv_patch_recall:.4f})')
+
+                        print(f'Patch-Level AUC (conv): {patch_auc:.4f} ({conv_patch_auc:.4f}), Precision: {patch_precision:.4f} , Recall: {patch_recall:.4f}')
 
                     elif args.model == 'clam' and len(patch_inst_labels) > 0:
                         from sklearn.metrics import roc_auc_score, precision_score, recall_score
