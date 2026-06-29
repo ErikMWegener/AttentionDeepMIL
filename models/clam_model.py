@@ -206,7 +206,6 @@ class CLAM(nn.Module):
 
     def count_positive_instances(self, X, threshold=0.5):
         """Zaehlen ueber den Instanz-Klassifikator (direkter als Attention-Threshold)."""
-        import otsu
         self.eval()
         with torch.no_grad():
             x = X.squeeze(0)
