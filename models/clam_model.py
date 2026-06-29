@@ -219,7 +219,7 @@ class CLAM(nn.Module):
             count = int((inst_probs > threshold).sum().item())
         return count, inst_probs
 
-    def extract_features(self, x):
+    def extract_features(self, x, threshold=0.5):
         """Fuer visualize_features.py (t-SNE/UMAP)."""
         self.eval()
         with torch.no_grad():
