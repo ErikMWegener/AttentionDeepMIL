@@ -1,0 +1,136 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Welcome to Overleaf --- just edit your LaTeX on the left,
+% and we'll compile it for you on the right. If you open the
+% 'Share' menu, you can invite other users to edit at the same
+% time. See www.overleaf.com/learn for more info. Enjoy!
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% Inbuilt themes in beamer
+\documentclass{beamer}
+
+\usepackage[ngerman]{babel}
+\usepackage{siunitx}
+
+\usepackage{biblatex}
+\usepackage{filecontents}
+\usepackage{subcaption}
+\usepackage{appendixnumberbeamer}
+
+\bibliography{ref_pres.bib}
+
+
+
+% Theme choice:
+\usetheme{Berlin}
+\usecolortheme{beaver}
+\setbeamertemplate{page number in head/foot}{\insertframenumber/\inserttotalframenumber} 
+
+% Title page details: 
+
+\title{Counting wheat heads on minimaly annotated data using AttentionMIL} 
+\subtitle{PMasterarbeit}
+\author{Erik Marten Wegener}
+\date{06.06.2026}
+
+\definecolor{dred}{rgb}{0.8, 0.0, 0.0}
+
+\setbeamertemplate{navigation symbols}{}
+
+\setbeamercolor{itemize item}{fg=dred}
+\setbeamercolor{itemize subitem}{fg=dred}
+\setbeamercolor{itemize subsubitem}{fg=dred}
+
+\setbeamertemplate{enumerate items}[default]
+\setbeamercolor{enumerate item}{fg=dred}
+\setbeamercolor{enumerate subitem}{fg=dred}
+\setbeamercolor*{enumerate subsubitem}{fg=dred}
+
+\setbeamertemplate{itemize item}[square]
+\setbeamertemplate{itemize subitem}[circle]
+\setbeamertemplate{itemize subsubitem}[triangle]
+
+\setbeamercolor{section number projected}{bg=gray}
+
+\setbeamercolor{block title}{
+	use=frametitle,fg=frametitle.fg,
+	use=frametitle right,bg=frametitle right.bg!60}
+\setbeamercolor{block body}{use=frametitle,bg=frametitle.bg}
+
+\setbeamerfont{caption}{size=\scriptsize}
+
+\setbeamercolor{caption name}{fg=dred}
+\begin{document}
+	
+	% Title page frame
+	
+	
+
+	\begin{frame}[plain]
+		\titlepage
+	\end{frame}
+	
+	
+	% Remove logo from the next slides
+	\logo{}
+	
+	
+	% Outline frame
+	
+	\begin{frame}{Gliederung}
+		\addtocounter{framenumber}{-1}
+		\tableofcontents
+	\end{frame}
+
+	\section{Motivation}
+		\begin{frame}{Motivation}
+			\begin{figure}[H]
+				\centering
+				\includegraphics[width=\textwidth]{Bilder/Drone_example.JPG}
+			\end{figure}
+		\end{frame}
+
+		\begin{abstract}
+			
+		\end{abstract}
+	
+	% Lists frame
+	\section{The idea}
+	% Present the idea from Ilse et al with the attention weights for the different numbers
+	% Lead to the idea of couning high attention patches in order to make an estimate
+	% Excoures to MIL, Attention and AttentionMIL
+	%	MIL: Multiple Instance Learning is just the solving of a problem by not looking at each instance seperately but rather looking at a bag of instances and making the decsion
+	%	if there is a leath one positive instance in the bag or not. This is a weakly supervised learning method.
+	%	Attention: Attention is a method to make a model focus on the most important parts. The attention weights are learned 
+	%   during training and can be used to visualize what the model is focusing on.
+	%	AttentionMIL: AttentionMIL is a combination of MIL and Attention. The model is trained to focus on the most important instances 
+	%   in the bag and make the decsion based on those instances.
+	% show results on MNIST 
+
+	% \begin{frame}{Performance-Vergleich zu bekannten Modellen(1)}
+	% 	\begin{figure}[H] 
+	% 		\begin{subfigure}[b]{0.66\linewidth}
+	% 			\centering
+	% 			\includegraphics[width=5cm]{} 
+	% 			\label{fig:DLPRB-Performance} 
+	% 			\vspace{4ex}
+	% 		\end{subfigure}%% 
+	% 		\begin{subfigure}[b]{0.33\linewidth}
+	% 			\centering
+	% 			\includegraphics[width=3cm]{} 
+	% 			\label{} 
+	% 			\vspace{4ex}
+	% 		\end{subfigure}  
+	% 		\caption{Muster}  
+	% 	\end{figure}
+	% \end{frame}
+
+	
+	\begin{frame}{Literatur}
+		\tiny
+		\printbibliography
+	\end{frame}
+	
+\end{document}
