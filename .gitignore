@@ -18,7 +18,7 @@ data/data_management/wheat_loader.py
 runs/rec_runs.sh
 testing/test_model.py
 testing/test_wheat_loader.py
-tex/
+counting_threshold_eval.md
 .gitignore
 data/data_management/create_datasets.sh
 data/data_management/temp.py
@@ -30,3 +30,9 @@ runs/start_runs.sh
 eval/attention_eval
 runs/cluster_mlruns_staging*
 runs/staging
+tex/master-vortrag/Master_Vortrag.aux
+tex/master-vortrag/Master_Vortrag.aux
+tex/master-vortrag/Master_Vortrag.fdb_latexmk
+tex/master-vortrag/Master_Vortrag.log
+tex/master-vortrag/Master_Vortrag.nav
+tex/master-vortrag/Master_Vortrag.synctex.gz

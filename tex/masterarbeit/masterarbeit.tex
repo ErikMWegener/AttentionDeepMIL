@@ -1,0 +1,85 @@
+\documentclass[12pt,parskip = half, DIV=classic,listof=totoc]{scrartcl}
+
+\usepackage[ngerman]{babel}
+
+\usepackage[autostyle = true, german = quotes]{csquotes}
+\usepackage{graphicx}
+\usepackage{siunitx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage{geometry}
+\usepackage[none]{hyphenat}
+\sloppy
+\usepackage[labelfont={bf,sf},font={small},%
+labelsep=space]{caption}
+\usepackage{subcaption}
+\usepackage[headsepline]{scrlayer-scrpage}
+\pagestyle{scrheadings}
+\automark[subsection]{section}
+\ohead{\pagemark}
+\chead{}
+\ihead{\headmark}
+\cfoot{}
+\usepackage[backend=biber]{biblatex}
+\addbibresource{ref-ba.bib}
+
+\KOMAoptions{DIV = last}
+\begin{document}
+	\pagenumbering{gobble}
+	\begin{titlepage}
+		\newgeometry{top=3cm,bottom=3cm}
+		\centering\bfseries\Large
+		Martin-Luther-Universität\\
+		Halle-Wittenberg\\
+		\Large\bfseries
+		Institut für Informatik
+		
+		\centering\vspace{3cm}\huge\bfseries
+		Masterarbeit\\
+		
+		\vspace{3cm}\Huge
+		Titel der Masterarbeit
+		
+		\vspace{6cm}\small\raggedright\normalfont
+		\begin{tabular}{ll}
+		vorgelegt von: &Max Mustermann\\
+		Martrikelnummer: &123456789\\
+		Studiengang: & Informatik\\
+		angefertigt bei: & Prof. Dr. Beispiel\\
+		Abgabedatum:  & 01.01.2026
+		\end{tabular}
+	\end{titlepage}
+	\newgeometry{top=2.5cm,bottom=3.5cm,right=2.5cm,left=3.5cm}
+	\newpage
+	\tableofcontents
+	\newpage
+	\thispagestyle{empty}
+	\section*{Eigenständigkeitserklärung}
+	
+	Hiermit erkläre ich, dass ich die vorliegende Arbeit eigenständig verfasst, keine anderen als die angegebenen Quellen und Hilfsmittel verwendet sowie die aus fremden Quellen direkt oder indirekt übernommenen Stellen/Gedanken als solche kenntlich gemacht habe.
+	
+	\vspace{4cm}
+	
+	\hspace{2cm} Ort, Datum \hfill Unterschrift \hspace{2cm}
+	\newpage
+	\pagenumbering{arabic}
+	
+	\section{Einleitung}
+	Dies ist ein kurzer Test der Formatierung. 
+	
+	Die Einstellungen umfassen:
+	\begin{itemize}
+	    \item \texttt{scrartcl} als Dokumentenklasse (12pt, half parskip)
+	    \item \texttt{polyglossia} für die deutsche Spracheinstellung
+	    \item \texttt{geometry} für die Anpassung der Ränder auf 2.5cm oben/rechts, 3.5cm unten/links
+	    \item \texttt{scrlayer-scrpage} für die Kopfzeilen mit Abschnittsnamen und Seitenzahlen
+	\end{itemize}
+
+	\subsection{Test Unterkapitel} Ein beispielhaftes Zitat als Test \cite{Gebauer2021_geneticDisease}.
+	
+	\newpage
+	\printbibliography
+	Hier ist ein weiterer Text, um das Layout von Unterkapiteln zu demonstrieren. Die Randeinstellungen sollten nun für diese Textseiten aktiv sein.
+\end{document}
