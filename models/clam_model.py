@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -46,7 +47,8 @@ class AttnNetGated(nn.Module):
 class CLAM(nn.Module):
     def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4,
                  in_channels=3, k_sample=8, pseudo_threshold = False, dropout=0.25,
-                 instance_loss_fn=None, subtyping=False):
+                 instance_loss_fn=None, subtyping=False,
+                 pseudo_quantile_pos=0.5, pseudo_quantile_neg=0.25):
         super().__init__()
         self.M = M
         self.L = L
@@ -55,6 +57,9 @@ class CLAM(nn.Module):
         self.pool_size = pool_size
         self.k_sample = k_sample
         self.pseudo_threshold = pseudo_threshold
+        # Quantile fuer inst_eval_threshold: >= q_pos -> pseudo-positiv, <= q_neg -> pseudo-negativ
+        self.pseudo_quantile_pos = pseudo_quantile_pos
+        self.pseudo_quantile_neg = pseudo_quantile_neg
         self.subtyping = subtyping
         self.instance_loss_fn = instance_loss_fn if instance_loss_fn is not None else nn.CrossEntropyLoss()
 
@@ -135,10 +140,10 @@ class CLAM(nn.Module):
         A_flat = A.view(-1)
 
         if label_is_pos:
-            # Adaptiv: alles ueber Median-Attention ist pseudo-positiv,
-            # unteres Quartil pseudo-negativ. Mittelfeld bleibt ungelabelt.
-            thr_pos = torch.quantile(A_flat, 0.5)
-            thr_neg = torch.quantile(A_flat, 0.25)
+            # Adaptiv: alles ueber dem pos-Quantil ist pseudo-positiv,
+            # alles unter dem neg-Quantil pseudo-negativ. Mittelfeld bleibt ungelabelt.
+            thr_pos = torch.quantile(A_flat, self.pseudo_quantile_pos)
+            thr_neg = torch.quantile(A_flat, self.pseudo_quantile_neg)
             pos_ids = (A_flat >= thr_pos).nonzero(as_tuple=True)[0]
             neg_ids = (A_flat <= thr_neg).nonzero(as_tuple=True)[0]
             pos_inst = torch.index_select(h, 0, pos_ids)
@@ -217,6 +222,61 @@ class CLAM(nn.Module):
             inst_probs = F.softmax(self.instance_classifier(H), dim=1)[:, 1]
             count = int((inst_probs > threshold).sum().item())
         return count, inst_probs
+
+    # -- Counting-Threshold-Auswertung ---------------------------------------
+
+    @staticmethod
+    def otsu_threshold(scores, n_bins=64):
+        """Otsu-Schwelle fuer ein 1D-Score-Array in [0,1]. Pro Bag anwendbar."""
+        scores = np.asarray(scores, dtype=np.float64)
+        if scores.size == 0:
+            return 0.5
+        hist, edges = np.histogram(scores, bins=n_bins, range=(0.0, 1.0))
+        hist = hist.astype(np.float64)
+        total = hist.sum()
+        if total == 0:
+            return 0.5
+        p = hist / total
+        omega = np.cumsum(p)                      # kumulative Klassenwahrscheinlichkeit
+        centers = (edges[:-1] + edges[1:]) / 2.0
+        mu = np.cumsum(p * centers)
+        mu_t = mu[-1]
+        denom = omega * (1.0 - omega)
+        denom[denom == 0] = 1e-12
+        sigma_b2 = (mu_t * omega - mu) ** 2 / denom   # Zwischenklassen-Varianz
+        return float(centers[np.argmax(sigma_b2)])
+
+    @staticmethod
+    def counting_scores_per_bag(scores_per_bag, true_counts, thr):
+        """Bias (signiert) und MAE ueber alle Bags bei festem globalem Threshold."""
+        pred = np.array([(np.asarray(s) > thr).sum() for s in scores_per_bag])
+        true = np.asarray([int(c) for c in true_counts])
+        return float((pred - true).mean()), float(np.abs(pred - true).mean())
+
+    @classmethod
+    def counting_scores_otsu(cls, scores_per_bag, true_counts):
+        """Wie counting_scores_per_bag, aber Otsu-Schwelle PRO Bag."""
+        pred, true = [], []
+        for s, c in zip(scores_per_bag, true_counts):
+            thr = cls.otsu_threshold(s)
+            pred.append((np.asarray(s) > thr).sum())
+            true.append(int(c))
+        pred, true = np.array(pred), np.array(true)
+        return float((pred - true).mean()), float(np.abs(pred - true).mean())
+
+    @classmethod
+    def calibrate_threshold(cls, scores_per_bag, true_counts, grid=None):
+        """Waehlt den globalen Threshold mit |Bias| minimal (Tie-Break: MAE).
+        MUSS auf dem VALIDIERUNGSSET aufgerufen werden."""
+        if grid is None:
+            grid = np.arange(0.10, 0.90, 0.02)
+        best = None
+        for thr in grid:
+            bias, mae = cls.counting_scores_per_bag(scores_per_bag, true_counts, thr)
+            key = (abs(bias), mae)
+            if best is None or key < best[0]:
+                best = (key, float(thr), bias, mae)
+        return best[1], best[2], best[3]   # thr, bias, mae
 
     def extract_features(self, x):
         """Fuer visualize_features.py (t-SNE/UMAP)."""

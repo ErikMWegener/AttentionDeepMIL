@@ -37,6 +37,8 @@ parser.add_argument('--reg', type=float, default=10e-5, metavar='R',
                     help='weight decay')
 parser.add_argument('--naive_counting', action='store_true', default=False,
                     help='activates counting of positve instances for model testing')
+parser.add_argument('--count_threshold_eval', action='store_true', default=False,
+                    help='CLAM: vergleicht Count-Threshold-Strategien (Sweep, Otsu, Val-kalibriert, Baseline) im Test')
 parser.add_argument('--seeds', nargs='+', type=int, default=[1], metavar='S',
                     help='list of random seeds (default: 1)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -72,6 +74,10 @@ parser.add_argument('--clam_bag_weight', type=float, default=0.7,
                     help='Gewicht des Bag-Loss im kombinierten CLAM-Loss')
 parser.add_argument('--clam_pseudo_threshold', action='store_true', default=False,
                     help='Use pseudo-thresholding for instance loss in CLAM (default: False)')
+parser.add_argument('--clam_pseudo_quantile_pos', type=float, default=0.5,
+                    help='CLAM pseudo-threshold: Quantil, ab dem Instanzen pseudo-positiv gelabelt werden (default: 0.5)')
+parser.add_argument('--clam_pseudo_quantile_neg', type=float, default=0.25,
+                    help='CLAM pseudo-threshold: Quantil, bis zu dem Instanzen pseudo-negativ gelabelt werden (default: 0.25)')
 #Data parameters
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
@@ -270,7 +276,9 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     model = CLAM(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps,
                                 kernel_size=args.model_kernel_size, pool_size=args.model_pool_size,
                                 in_channels=3 if args.rgb else 1,
-                                k_sample=args.clam_k_sample, pseudo_threshold=args.clam_pseudo_threshold, dropout=0.25)
+                                k_sample=args.clam_k_sample, pseudo_threshold=args.clam_pseudo_threshold, dropout=0.25,
+                                pseudo_quantile_pos=args.clam_pseudo_quantile_pos,
+                                pseudo_quantile_neg=args.clam_pseudo_quantile_neg)
                     model_tags = {
                         "model_M": model.M,
                         "model_L": model.L,
@@ -279,6 +287,8 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_kernel_size": model.kernel_size,
                         "model_k_sample": model.k_sample,
                         "model_pseudo_threshold": model.pseudo_threshold,
+                        "model_pseudo_quantile_pos": model.pseudo_quantile_pos,
+                        "model_pseudo_quantile_neg": model.pseudo_quantile_neg,
                         "model_architecture": "CLAM_SB (gated attn + instance classifier)"
                     }
             
@@ -288,6 +298,24 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.reg)
 
+                # ── Puffer fuer Counting-Threshold-Auswertung (nur CLAM) ──────────────
+                val_scores_per_bag = []   # Instanz-Scores je Val-Bag (letzte Epoche)
+                val_true_counts = []      # wahre Counts je Val-Bag
+                p_train = None            # Positiv-Anteil aus dem Trainingsset (Baseline)
+
+                if args.count_threshold_eval and args.model == 'clam':
+                    print('Bestimme Baseline-Positiv-Anteil p_train ueber das Trainingsset...')
+                    pos_fracs = []
+                    for _p, _c, _lbl, _cnt, inst_lbl in train_dataset:
+                        inst = inst_lbl.cpu().numpy().flatten()
+                        if len(set(inst.tolist())) > 2:      # MNIST -> binaer
+                            inst = (inst == 9).astype(int)
+                        if len(inst) > 0:
+                            pos_fracs.append(inst.mean())
+                    if pos_fracs:
+                        p_train = float(np.mean(pos_fracs))
+                        print(f'Baseline-Positiv-Anteil p_train = {p_train:.3f}')
+                        mlflow.log_metric('count_baseline_p_train', p_train)
 
                 def train(epoch):
                     model.train()
@@ -348,13 +376,19 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     val_error = 0.
                     y_true, y_pred, y_prob = [], [], []
 
+                    # Instanz-Scores fuer die Val-Kalibrierung nur in der letzten Epoche sammeln
+                    collect_val_scores = args.count_threshold_eval and args.model == 'clam' and epoch == args.epochs
+                    if collect_val_scores:
+                        val_scores_per_bag.clear()
+                        val_true_counts.clear()
+
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(val_dataset):
                             if args.cuda:
                                 patches, bag_label = patches.cuda(), label.cuda()
-                            else: 
+                            else:
                                 bag_label = label
-                            
+
                             patches = patches.squeeze(0)
 
                             if args.model == 'clam':
@@ -367,6 +401,11 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                 val_error += error
                                 y_prob.append(prob_pos.cpu().item())
                                 y_pred.append(pred.cpu().item())
+
+                                if collect_val_scores:
+                                    _, inst_probs = model.count_positive_instances(patches.unsqueeze(0), threshold=0.5)
+                                    val_scores_per_bag.append(inst_probs.cpu().numpy())
+                                    val_true_counts.append(int(count.item()) if torch.is_tensor(count) else int(count))
                             else:
                                 Y_prob, predicted_label, _ = model(patches)
 
@@ -418,6 +457,9 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     patch_inst_labels = []
                     patch_inst_scores = []
 
+                    scores_per_bag = []   # Instanz-Scores je Test-Bag (Counting-Threshold-Eval)
+                    true_counts = []      # wahre Counts je Test-Bag
+
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(test_dataset):
                             if args.cuda:
@@ -439,6 +481,11 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                                 # Instanz-Scores aus dem Instanz-Klassifikator (NICHT aus Attention)
                                 _, inst_probs = model.count_positive_instances(patches.unsqueeze(0), threshold=0.5)
+
+                                if args.count_threshold_eval:
+                                    scores_per_bag.append(inst_probs.cpu().numpy())
+                                    true_counts.append(int(count.item()) if torch.is_tensor(count) else int(count))
+
                                 inst_lbl = instance_label.cpu().numpy().flatten()
                                 if len(set(inst_lbl.tolist())) > 2:        # MNIST Multi-Class -> binaer
                                     inst_lbl = (inst_lbl == 9).astype(int)
@@ -606,9 +653,51 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         print('Counting Accuracy: {:.4f}, MAE: {:.4f}, RMSE: {:.4f}'.format(
                             counting_metrics['counting_accuracy'], counting_metrics['counting_mae'], counting_metrics['counting_rmse']))
                         
+                    # ── Counting-Threshold-Auswertung (nur CLAM) ──────────────────────
+                    if args.count_threshold_eval and args.model == 'clam' and len(scores_per_bag) > 0:
+                        # 1) Globaler Sweep -- Bias/MAE-Kurve ueber Thresholds
+                        print("\n--- Counting-Threshold-Sweep (Test) ---")
+                        for thr in np.arange(0.20, 0.75, 0.05):
+                            bias, mae = CLAM.counting_scores_per_bag(scores_per_bag, true_counts, thr)
+                            print(f"  thr={thr:.2f}  Bias={bias:+.2f}  MAE={mae:.2f}")
+                            mlflow.log_metric("count_sweep_bias", bias, step=int(thr * 100))
+                            mlflow.log_metric("count_sweep_mae",  mae,  step=int(thr * 100))
+
+                        # 2) Otsu pro Bag
+                        otsu_bias, otsu_mae = CLAM.counting_scores_otsu(scores_per_bag, true_counts)
+                        print(f"  Otsu (per-bag)  Bias={otsu_bias:+.2f}  MAE={otsu_mae:.2f}")
+                        mlflow.log_metric("count_otsu_bias", otsu_bias)
+                        mlflow.log_metric("count_otsu_mae",  otsu_mae)
+                        metrics['count_otsu_mae'] = otsu_mae
+
+                        # 3) Auf Validierung bias-kalibrierter globaler Threshold
+                        if len(val_scores_per_bag) > 0:
+                            cal_thr, cal_bias_val, cal_mae_val = CLAM.calibrate_threshold(val_scores_per_bag, val_true_counts)
+                            test_bias, test_mae = CLAM.counting_scores_per_bag(scores_per_bag, true_counts, cal_thr)
+                            print(f"  Kalibriert (thr={cal_thr:.2f} aus Val)  Test-Bias={test_bias:+.2f}  Test-MAE={test_mae:.2f}")
+                            mlflow.log_metric("count_calibrated_threshold", cal_thr)
+                            mlflow.log_metric("count_calibrated_bias", test_bias)
+                            mlflow.log_metric("count_calibrated_mae",  test_mae)
+                            metrics['count_calibrated_threshold'] = cal_thr
+                            metrics['count_calibrated_mae'] = test_mae
+                        else:
+                            print("  Kalibrierung uebersprungen (keine Val-Scores gesammelt).")
+
+                        # 4) Trivialer Baseline-Schaetzer: fester Anteil p_train * N
+                        if p_train is not None:
+                            pred = np.array([p_train * len(s) for s in scores_per_bag])
+                            true = np.array(true_counts)
+                            base_bias = float((pred - true).mean())
+                            base_mae  = float(np.abs(pred - true).mean())
+                            print(f"  Baseline (p={p_train:.2f} * N)  Bias={base_bias:+.2f}  MAE={base_mae:.2f}")
+                            mlflow.log_metric("count_baseline_bias", base_bias)
+                            mlflow.log_metric("count_baseline_mae", base_mae)
+                            metrics['count_baseline_mae'] = base_mae
+                    # ──────────────────────────────────────────────────────────────────
+
                     if args.log_attention_weights and attention_agg:
                         all_runs_results["attention_weights"].extend(attention_agg)
-                        
+
                     return metrics, count_truth, count_pred
                 
                 print('Starting training!')
