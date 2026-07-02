@@ -1,0 +1,21 @@
+name: attentiondeepmil
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - torchaudio
+  - pytorch-cuda=12.1
+  - torchvision
+  - pytorch
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - tqdm
+  - pandas
+  - pytest
+  - h5py
+  - pillow
+  - ipykernel
+  - umap-learn
+prefix: /home/erik/miniconda3/envs/attentiondeepmil
