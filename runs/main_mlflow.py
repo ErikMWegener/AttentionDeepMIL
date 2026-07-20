@@ -38,7 +38,9 @@ parser.add_argument('--reg', type=float, default=10e-5, metavar='R',
 parser.add_argument('--naive_counting', action='store_true', default=False,
                     help='activates counting of positve instances for model testing')
 parser.add_argument('--count_threshold_eval', action='store_true', default=False,
-                    help='CLAM: vergleicht Count-Threshold-Strategien (Sweep, Otsu, Val-kalibriert, Baseline) im Test')
+                    help='CLAM: vergleicht Count-Threshold-Strategien (Sweep, Otsu, Val-kalibriert, Baseline) im Test; alle bag-gegatet')
+parser.add_argument('--soft_counting', action='store_true', default=False,
+                    help='CLAM: zusaetzlicher Soft-Count (Summe der Instanz-Wahrscheinlichkeiten, bag-gegatet) in count_threshold_eval')
 parser.add_argument('--seeds', nargs='+', type=int, default=[1], metavar='S',
                     help='list of random seeds (default: 1)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -301,6 +303,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                 # ── Puffer fuer Counting-Threshold-Auswertung (nur CLAM) ──────────────
                 val_scores_per_bag = []   # Instanz-Scores je Val-Bag (letzte Epoche)
                 val_true_counts = []      # wahre Counts je Val-Bag
+                val_pred_pos_per_bag = [] # Bag-Vorhersage je Val-Bag (fuer Gating der Kalibrierung)
                 p_train = None            # Positiv-Anteil aus dem Trainingsset (Baseline)
 
                 if args.count_threshold_eval and args.model == 'clam':
@@ -381,6 +384,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     if collect_val_scores:
                         val_scores_per_bag.clear()
                         val_true_counts.clear()
+                        val_pred_pos_per_bag.clear()
 
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(val_dataset):
@@ -406,6 +410,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                     _, inst_probs = model.count_positive_instances(patches.unsqueeze(0), threshold=0.5)
                                     val_scores_per_bag.append(inst_probs.cpu().numpy())
                                     val_true_counts.append(int(count.item()) if torch.is_tensor(count) else int(count))
+                                    val_pred_pos_per_bag.append(bool(pred.cpu().item() == 1))
                             else:
                                 Y_prob, predicted_label, _ = model(patches)
 
@@ -459,6 +464,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                     scores_per_bag = []   # Instanz-Scores je Test-Bag (Counting-Threshold-Eval)
                     true_counts = []      # wahre Counts je Test-Bag
+                    pred_pos_per_bag = [] # Bag-Vorhersage je Test-Bag (fuer Gating)
 
                     with torch.no_grad():
                         for batch_idx, (patches, coords, label, count, instance_label) in enumerate(test_dataset):
@@ -485,6 +491,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                 if args.count_threshold_eval:
                                     scores_per_bag.append(inst_probs.cpu().numpy())
                                     true_counts.append(int(count.item()) if torch.is_tensor(count) else int(count))
+                                    pred_pos_per_bag.append(bool(pred.cpu().item() == 1))
 
                                 inst_lbl = instance_label.cpu().numpy().flatten()
                                 if len(set(inst_lbl.tolist())) > 2:        # MNIST Multi-Class -> binaer
@@ -654,26 +661,33 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                             counting_metrics['counting_accuracy'], counting_metrics['counting_mae'], counting_metrics['counting_rmse']))
                         
                     # ── Counting-Threshold-Auswertung (nur CLAM) ──────────────────────
+                    # Alle Threshold-Strategien sind bag-gegatet: negativ klassifizierte
+                    # Bags zaehlen 0. Das macht den Vergleich fair zum naiven (ebenfalls
+                    # gegateten) Zaehlen und passt zur zero-inflated Count-Verteilung.
                     if args.count_threshold_eval and args.model == 'clam' and len(scores_per_bag) > 0:
-                        # 1) Globaler Sweep -- Bias/MAE-Kurve ueber Thresholds
-                        print("\n--- Counting-Threshold-Sweep (Test) ---")
+                        gate = np.asarray(pred_pos_per_bag, dtype=bool)
+
+                        # 1) Globaler Sweep -- Bias/MAE-Kurve ueber Thresholds (gegatet)
+                        print("\n--- Counting-Threshold-Sweep (Test, bag-gegatet) ---")
                         for thr in np.arange(0.20, 0.75, 0.05):
-                            bias, mae = CLAM.counting_scores_per_bag(scores_per_bag, true_counts, thr)
+                            bias, mae = CLAM.counting_scores_per_bag(scores_per_bag, true_counts, thr, pred_pos=gate)
                             print(f"  thr={thr:.2f}  Bias={bias:+.2f}  MAE={mae:.2f}")
                             mlflow.log_metric("count_sweep_bias", bias, step=int(thr * 100))
                             mlflow.log_metric("count_sweep_mae",  mae,  step=int(thr * 100))
 
-                        # 2) Otsu pro Bag
-                        otsu_bias, otsu_mae = CLAM.counting_scores_otsu(scores_per_bag, true_counts)
+                        # 2) Otsu pro Bag (gegatet)
+                        otsu_bias, otsu_mae = CLAM.counting_scores_otsu(scores_per_bag, true_counts, pred_pos=gate)
                         print(f"  Otsu (per-bag)  Bias={otsu_bias:+.2f}  MAE={otsu_mae:.2f}")
                         mlflow.log_metric("count_otsu_bias", otsu_bias)
                         mlflow.log_metric("count_otsu_mae",  otsu_mae)
                         metrics['count_otsu_mae'] = otsu_mae
 
-                        # 3) Auf Validierung bias-kalibrierter globaler Threshold
+                        # 3) Auf Validierung bias-kalibrierter globaler Threshold (Val + Test gegatet)
                         if len(val_scores_per_bag) > 0:
-                            cal_thr, cal_bias_val, cal_mae_val = CLAM.calibrate_threshold(val_scores_per_bag, val_true_counts)
-                            test_bias, test_mae = CLAM.counting_scores_per_bag(scores_per_bag, true_counts, cal_thr)
+                            val_gate = np.asarray(val_pred_pos_per_bag, dtype=bool)
+                            cal_thr, cal_bias_val, cal_mae_val = CLAM.calibrate_threshold(
+                                val_scores_per_bag, val_true_counts, pred_pos=val_gate)
+                            test_bias, test_mae = CLAM.counting_scores_per_bag(scores_per_bag, true_counts, cal_thr, pred_pos=gate)
                             print(f"  Kalibriert (thr={cal_thr:.2f} aus Val)  Test-Bias={test_bias:+.2f}  Test-MAE={test_mae:.2f}")
                             mlflow.log_metric("count_calibrated_threshold", cal_thr)
                             mlflow.log_metric("count_calibrated_bias", test_bias)
@@ -683,7 +697,15 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         else:
                             print("  Kalibrierung uebersprungen (keine Val-Scores gesammelt).")
 
-                        # 4) Trivialer Baseline-Schaetzer: fester Anteil p_train * N
+                        # 4) Soft-Count: Summe der Instanz-Wahrscheinlichkeiten (gegatet, threshold-frei)
+                        if args.soft_counting:
+                            soft_bias, soft_mae = CLAM.counting_scores_soft(scores_per_bag, true_counts, pred_pos=gate)
+                            print(f"  Soft-Count (Sum P, gegatet)  Bias={soft_bias:+.2f}  MAE={soft_mae:.2f}")
+                            mlflow.log_metric("count_soft_bias", soft_bias)
+                            mlflow.log_metric("count_soft_mae",  soft_mae)
+                            metrics['count_soft_mae'] = soft_mae
+
+                        # 5) Trivialer Baseline-Schaetzer: fester Anteil p_train * N (ungegatet, Trivial-Anker)
                         if p_train is not None:
                             pred = np.array([p_train * len(s) for s in scores_per_bag])
                             true = np.array(true_counts)

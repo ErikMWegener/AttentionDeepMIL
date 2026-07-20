@@ -247,33 +247,59 @@ class CLAM(nn.Module):
         return float(centers[np.argmax(sigma_b2)])
 
     @staticmethod
-    def counting_scores_per_bag(scores_per_bag, true_counts, thr):
-        """Bias (signiert) und MAE ueber alle Bags bei festem globalem Threshold."""
-        pred = np.array([(np.asarray(s) > thr).sum() for s in scores_per_bag])
-        true = np.asarray([int(c) for c in true_counts])
+    def _gate(pred, pred_pos):
+        """Bag-Gating: setzt den Count auf 0 fuer Bags, die als negativ
+        klassifiziert wurden. pred_pos ist ein bool-Array (True = Bag positiv
+        vorhergesagt) in derselben Reihenfolge wie scores_per_bag. None = kein
+        Gating (Rueckwaertskompatibilitaet)."""
+        pred = np.asarray(pred, dtype=np.float64)
+        if pred_pos is None:
+            return pred
+        mask = np.asarray(pred_pos, dtype=bool)
+        pred = pred.copy()
+        pred[~mask] = 0.0
+        return pred
+
+    @classmethod
+    def counting_scores_per_bag(cls, scores_per_bag, true_counts, thr, pred_pos=None):
+        """Bias (signiert) und MAE ueber alle Bags bei festem globalem Threshold.
+        Mit pred_pos werden negativ klassifizierte Bags auf Count 0 gegatet."""
+        pred = np.array([(np.asarray(s) > thr).sum() for s in scores_per_bag], dtype=np.float64)
+        pred = cls._gate(pred, pred_pos)
+        true = np.asarray([int(c) for c in true_counts], dtype=np.float64)
         return float((pred - true).mean()), float(np.abs(pred - true).mean())
 
     @classmethod
-    def counting_scores_otsu(cls, scores_per_bag, true_counts):
-        """Wie counting_scores_per_bag, aber Otsu-Schwelle PRO Bag."""
-        pred, true = [], []
-        for s, c in zip(scores_per_bag, true_counts):
-            thr = cls.otsu_threshold(s)
-            pred.append((np.asarray(s) > thr).sum())
-            true.append(int(c))
-        pred, true = np.array(pred), np.array(true)
+    def counting_scores_otsu(cls, scores_per_bag, true_counts, pred_pos=None):
+        """Wie counting_scores_per_bag, aber Otsu-Schwelle PRO Bag (bag-gegatet)."""
+        pred = np.array([(np.asarray(s) > cls.otsu_threshold(s)).sum()
+                         for s in scores_per_bag], dtype=np.float64)
+        pred = cls._gate(pred, pred_pos)
+        true = np.asarray([int(c) for c in true_counts], dtype=np.float64)
         return float((pred - true).mean()), float(np.abs(pred - true).mean())
 
     @classmethod
-    def calibrate_threshold(cls, scores_per_bag, true_counts, grid=None):
-        """Waehlt den globalen Threshold mit |Bias| minimal (Tie-Break: MAE).
-        MUSS auf dem VALIDIERUNGSSET aufgerufen werden."""
+    def counting_scores_soft(cls, scores_per_bag, true_counts, pred_pos=None):
+        """Soft-Count: Erwartungswert der Positiven = Summe der Instanz-
+        Wahrscheinlichkeiten pro Bag. Kein Threshold noetig; optional bag-gegatet."""
+        pred = np.array([float(np.asarray(s).sum()) for s in scores_per_bag], dtype=np.float64)
+        pred = cls._gate(pred, pred_pos)
+        true = np.asarray([int(c) for c in true_counts], dtype=np.float64)
+        return float((pred - true).mean()), float(np.abs(pred - true).mean())
+
+    @classmethod
+    def calibrate_threshold(cls, scores_per_bag, true_counts, grid=None, pred_pos=None):
+        """Waehlt den globalen Threshold mit MAE minimal (Tie-Break: |Bias|).
+        MAE ist die eigentliche Zielgroesse; auf der zero-inflated Verteilung
+        faellt der bias-neutrale Punkt nicht mit dem MAE-Minimum zusammen.
+        MUSS auf dem VALIDIERUNGSSET aufgerufen werden. pred_pos gaten die
+        Val-Bags konsistent zur Test-Auswertung."""
         if grid is None:
-            grid = np.arange(0.10, 0.90, 0.02)
+            grid = np.arange(0.02, 0.90, 0.02)
         best = None
         for thr in grid:
-            bias, mae = cls.counting_scores_per_bag(scores_per_bag, true_counts, thr)
-            key = (abs(bias), mae)
+            bias, mae = cls.counting_scores_per_bag(scores_per_bag, true_counts, thr, pred_pos=pred_pos)
+            key = (mae, abs(bias))
             if best is None or key < best[0]:
                 best = (key, float(thr), bias, mae)
         return best[1], best[2], best[3]   # thr, bias, mae
