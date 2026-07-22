@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from models.learned_grayscale import LearnedGrayscale
 """
 CLAM für binäres MIL mit CNN-Backbone (angepasst an Eriks Attention-MIL-Setup).
 
@@ -48,7 +48,7 @@ class CLAM(nn.Module):
     def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4,
                  in_channels=3, k_sample=8, pseudo_threshold = False, dropout=0.25,
                  instance_loss_fn=None, subtyping=False,
-                 pseudo_quantile_pos=0.5, pseudo_quantile_neg=0.25):
+                 pseudo_quantile_pos=0.5, pseudo_quantile_neg=0.25, grayscaling=False):
         super().__init__()
         self.M = M
         self.L = L
@@ -61,8 +61,10 @@ class CLAM(nn.Module):
         self.pseudo_quantile_pos = pseudo_quantile_pos
         self.pseudo_quantile_neg = pseudo_quantile_neg
         self.subtyping = subtyping
+        self.grayscaling = grayscaling
         self.instance_loss_fn = instance_loss_fn if instance_loss_fn is not None else nn.CrossEntropyLoss()
 
+        self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
         # -- [ANPASSUNG 1] CNN-Backbone (identisch zu model.Attention) --------
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 20, kernel_size=kernel_size, padding=kernel_size // 2),
@@ -162,7 +164,7 @@ class CLAM(nn.Module):
 
     def forward(self, x, label=None, instance_eval=False):
         x = x.squeeze(0)
-
+        x = self.grayscale_layer(x)
         H = self.feature_extractor_part1(x)
         H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
         H = self.feature_extractor_part2(H)  # [N, M]
@@ -315,3 +317,4 @@ class CLAM(nn.Module):
             A, H = self.attention_net(H)
             A = F.softmax(torch.transpose(A, 1, 0), dim=1)
         return H.cpu().numpy(), A.squeeze(0).cpu().numpy()
+    

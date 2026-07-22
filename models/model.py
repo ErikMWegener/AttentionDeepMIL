@@ -1,3 +1,4 @@
+from models.learned_grayscale import LearnedGrayscale
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,7 +7,7 @@ from entmax import sparsemax, entmax_bisect
 
 
 class Attention(nn.Module):
-    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, attention_activation="softmax"):
+    def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4, ATTENTION_BRANCHES=1, in_channels=1, grayscaling=False, attention_activation="softmax"):
         super(Attention, self).__init__()
         self.M = M
         self.L = L
@@ -17,7 +18,10 @@ class Attention(nn.Module):
         self.attention_activation = attention_activation
         self.temperature = nn.Parameter(torch.ones(1))
         self.entmax_alpha = nn.Parameter(torch.tensor(1.5))  # learnable alpha for entmax
-
+        self.grayscaling = grayscaling
+        
+        self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
+        
         self.feature_extractor_part1 = nn.Sequential(
             nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
             nn.ReLU(),
@@ -49,6 +53,7 @@ class Attention(nn.Module):
 
     def forward(self, x):
         x = x.squeeze(0)
+        x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
 
         H = self.feature_extractor_part1(x)
         H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)

@@ -1,6 +1,8 @@
 import sys
 import os
 
+from models.learned_grayscale import LearnedGrayscale
+
 # Fügt das Stammverzeichnis des Projekts zum Python-Pfad hinzu
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -37,10 +39,6 @@ parser.add_argument('--reg', type=float, default=10e-5, metavar='R',
                     help='weight decay')
 parser.add_argument('--naive_counting', action='store_true', default=False,
                     help='activates counting of positve instances for model testing')
-parser.add_argument('--count_threshold_eval', action='store_true', default=False,
-                    help='CLAM: vergleicht Count-Threshold-Strategien (Sweep, Otsu, Val-kalibriert, Baseline) im Test; alle bag-gegatet')
-parser.add_argument('--soft_counting', action='store_true', default=False,
-                    help='CLAM: zusaetzlicher Soft-Count (Summe der Instanz-Wahrscheinlichkeiten, bag-gegatet) in count_threshold_eval')
 parser.add_argument('--seeds', nargs='+', type=int, default=[1], metavar='S',
                     help='list of random seeds (default: 1)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -64,6 +62,8 @@ parser.add_argument('--attention_activation', type=str, default='softmax', choic
                     help='activation function for attention weights (default: softmax)')
 parser.add_argument('--rgb', action='store_true', default=False,
                     help='use RGB input instead of grayscale')
+parser.add_argument('--grayscale', action='store_true', default=False,
+                    help='use learned grayscale conversion for RGB input (rgb and grayscale are exclusive)')
 #FPN parameters
 parser.add_argument('--model_dx', type=int, default=256,
                     help='FPN-MIL: shared FPN channel dimension d_x (default: 256)')
@@ -80,6 +80,10 @@ parser.add_argument('--clam_pseudo_quantile_pos', type=float, default=0.5,
                     help='CLAM pseudo-threshold: Quantil, ab dem Instanzen pseudo-positiv gelabelt werden (default: 0.5)')
 parser.add_argument('--clam_pseudo_quantile_neg', type=float, default=0.25,
                     help='CLAM pseudo-threshold: Quantil, bis zu dem Instanzen pseudo-negativ gelabelt werden (default: 0.25)')
+parser.add_argument('--count_threshold_eval', action='store_true', default=False,
+                    help='CLAM: vergleicht Count-Threshold-Strategien (Sweep, Otsu, Val-kalibriert, Baseline) im Test; alle bag-gegatet')
+parser.add_argument('--soft_counting', action='store_true', default=False,
+                    help='CLAM: zusaetzlicher Soft-Count (Summe der Instanz-Wahrscheinlichkeiten, bag-gegatet) in count_threshold_eval')
 #Data parameters
 parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5', 
                     help='path to H5 file containing the dataset (default: mnist_bags.h5)')
@@ -204,7 +208,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                 print('Initialize model')
                 if args.model == 'attention':
-                    model = Attention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, attention_activation=args.attention_activation)
+                    model = Attention(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps, kernel_size=args.model_kernel_size, pool_size=args.model_pool_size, in_channels=3 if args.rgb else 1, grayscaling=args.grayscaling, attention_activation=args.attention_activation)
                     model_tags = {
                         "model_M": model.M,
                         "model_L": model.L,
@@ -278,7 +282,8 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     model = CLAM(M=args.model_M, L=args.model_L, num_maps=args.model_num_maps,
                                 kernel_size=args.model_kernel_size, pool_size=args.model_pool_size,
                                 in_channels=3 if args.rgb else 1,
-                                k_sample=args.clam_k_sample, pseudo_threshold=args.clam_pseudo_threshold, dropout=0.25,
+                                k_sample=args.clam_k_sample, pseudo_threshold=args.clam_pseudo_threshold, dropout=0.25, 
+                                grayscaling=args.grayscale,
                                 pseudo_quantile_pos=args.clam_pseudo_quantile_pos,
                                 pseudo_quantile_neg=args.clam_pseudo_quantile_neg)
                     model_tags = {
@@ -372,6 +377,28 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                             epoch, train_loss, train_bag_loss, train_inst_loss, train_error))
                     else:
                         print('Epoch: {}, Loss: {:.4f}, Train error: {:.4f}'.format(epoch, train_loss, train_error))
+                    
+                    gray = getattr(model, "grayscale_layer", None)
+                    if isinstance(gray, LearnedGrayscale):
+                        w = gray.normalized_weights()               # tensor([r, g, b])
+                        mlflow.log_metrics({
+                            "gray_w_r": w[0].item(),
+                            "gray_w_g": w[1].item(),
+                            "gray_w_b": w[2].item(),
+                        }, step=epoch)
+
+                    # cosine similarity to reference conversions -> "which index it's similar to"
+                    refs = {
+                        "bt601":  torch.tensor([0.299, 0.587, 0.114]),
+                        "bt709":  torch.tensor([0.2126, 0.7152, 0.0722]),
+                        "R":      torch.tensor([1., 0., 0.]),
+                        "G":      torch.tensor([0., 1., 0.]),
+                        "B":      torch.tensor([0., 0., 1.]),
+                        "mean":   torch.tensor([1/3, 1/3, 1/3]),
+                    }
+                    sims = {k: F.cosine_similarity(w, v, dim=0).item() for k, v in refs.items()}
+                    mlflow.log_metrics({f"gray_cos_{k}": s for k, s in sims.items()}, step=epoch)
+
 
                 def validate(epoch):
                     model.eval()
