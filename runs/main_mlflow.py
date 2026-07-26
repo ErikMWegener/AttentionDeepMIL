@@ -1,8 +1,6 @@
 import sys
 import os
 
-from models.learned_grayscale import LearnedGrayscale
-
 # Fügt das Stammverzeichnis des Projekts zum Python-Pfad hinzu
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -22,6 +20,7 @@ from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
 from models.model import Attention, AttentionBatchNorm, AttentionDropout, AttentionThirdConv, GatedAttention
 from models.fpn_mil_model import FPNMIL
+from models.learned_grayscale import LearnedGrayscale
 import visualize_features as vf
 
 
