@@ -386,17 +386,17 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                             "gray_w_b": w[2].item(),
                         }, step=epoch)
 
-                    # cosine similarity to reference conversions -> "which index it's similar to"
-                    refs = {
-                        "bt601":  torch.tensor([0.299, 0.587, 0.114]),
-                        "bt709":  torch.tensor([0.2126, 0.7152, 0.0722]),
-                        "R":      torch.tensor([1., 0., 0.]),
-                        "G":      torch.tensor([0., 1., 0.]),
-                        "B":      torch.tensor([0., 0., 1.]),
-                        "mean":   torch.tensor([1/3, 1/3, 1/3]),
-                    }
-                    sims = {k: F.cosine_similarity(w, v, dim=0).item() for k, v in refs.items()}
-                    mlflow.log_metrics({f"gray_cos_{k}": s for k, s in sims.items()}, step=epoch)
+                        # cosine similarity to reference conversions -> "which index it's similar to"
+                        refs = {
+                            "bt601":  torch.tensor([0.299, 0.587, 0.114]),
+                            "bt709":  torch.tensor([0.2126, 0.7152, 0.0722]),
+                            "R":      torch.tensor([1., 0., 0.]),
+                            "G":      torch.tensor([0., 1., 0.]),
+                            "B":      torch.tensor([0., 0., 1.]),
+                            "mean":   torch.tensor([1/3, 1/3, 1/3]),
+                        }
+                        sims = {k: F.cosine_similarity(w, v, dim=0).item() for k, v in refs.items()}
+                        mlflow.log_metrics({f"gray_cos_{k}": s for k, s in sims.items()}, step=epoch)
 
 
                 def validate(epoch):
