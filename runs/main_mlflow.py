@@ -61,7 +61,7 @@ parser.add_argument('--attention_activation', type=str, default='softmax', choic
                     help='activation function for attention weights (default: softmax)')
 parser.add_argument('--rgb', action='store_true', default=False,
                     help='use RGB input instead of grayscale')
-parser.add_argument('--grayscale', action='store_true', default=False,
+parser.add_argument('--grayscaling', action='store_true', default=False,
                     help='use learned grayscale conversion for RGB input (rgb and grayscale are exclusive)')
 #FPN parameters
 parser.add_argument('--model_dx', type=int, default=256,
