@@ -282,7 +282,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                 kernel_size=args.model_kernel_size, pool_size=args.model_pool_size,
                                 in_channels=3 if args.rgb else 1,
                                 k_sample=args.clam_k_sample, pseudo_threshold=args.clam_pseudo_threshold, dropout=0.25, 
-                                grayscaling=args.grayscale,
+                                grayscaling=args.grayscaling,
                                 pseudo_quantile_pos=args.clam_pseudo_quantile_pos,
                                 pseudo_quantile_neg=args.clam_pseudo_quantile_neg)
                     model_tags = {
