@@ -218,6 +218,7 @@ class CLAM(nn.Module):
             x = X.squeeze(0)
             K = x.shape[0]
             threshold = 1/K
+            x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
             H = self.feature_extractor_part1(x)
             H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
             H = self.feature_extractor_part2(H)
@@ -311,6 +312,7 @@ class CLAM(nn.Module):
         self.eval()
         with torch.no_grad():
             x_in = x.squeeze(0) if x.dim() == 5 else x
+            x_in = self.grayscale_layer(x_in)  # Apply learned grayscale conversion if enabled
             H = self.feature_extractor_part1(x_in)
             H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
             H = self.feature_extractor_part2(H)

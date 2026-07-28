@@ -139,6 +139,7 @@ class Attention(nn.Module):
         self.eval()
         with torch.no_grad():
             x = x.squeeze(0)
+            x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
             H = self.feature_extractor_part1(x)
             H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
             H = self.feature_extractor_part2(H)  # [K, M]
