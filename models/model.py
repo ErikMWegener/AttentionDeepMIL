@@ -1,3 +1,4 @@
+from models.backbone import Backbone
 from models.learned_grayscale import LearnedGrayscale
 import torch
 import torch.nn as nn
@@ -20,21 +21,23 @@ class Attention(nn.Module):
         self.entmax_alpha = nn.Parameter(torch.tensor(1.5))  # learnable alpha for entmax
         self.grayscaling = grayscaling
         
-        self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
+        # self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
         
-        self.feature_extractor_part1 = nn.Sequential(
-            nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.ReLU(),
-            nn.MaxPool2d(2, stride=2),
-            nn.Conv2d(20, self.num_maps, kernel_size=self.kernel_size, padding=self.kernel_size//2),
-            nn.ReLU(),
-            nn.AdaptiveMaxPool2d((self.pool_size, self.pool_size))
-        )
+        # self.feature_extractor_part1 = nn.Sequential(
+        #     nn.Conv2d(in_channels, 20, kernel_size=self.kernel_size, padding=self.kernel_size//2),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(2, stride=2),
+        #     nn.Conv2d(20, self.num_maps, kernel_size=self.kernel_size, padding=self.kernel_size//2),
+        #     nn.ReLU(),
+        #     nn.AdaptiveMaxPool2d((self.pool_size, self.pool_size))
+        # )
 
-        self.feature_extractor_part2 = nn.Sequential(
-            nn.Linear(self.num_maps * self.pool_size * self.pool_size, self.M),
-            nn.ReLU(),
-        )
+        # self.feature_extractor_part2 = nn.Sequential(
+        #     nn.Linear(self.num_maps * self.pool_size * self.pool_size, self.M),
+        #     nn.ReLU(),
+        # )
+
+        self.backbone = Backbone(in_channels=in_channels, kernel_size=kernel_size, num_maps=num_maps, pool_size=pool_size, M=M, grayscaling=grayscaling)
 
         self.attention = nn.Sequential(
             nn.Linear(self.M, self.L), # matrix V
@@ -52,12 +55,14 @@ class Attention(nn.Module):
         
 
     def forward(self, x):
-        x = x.squeeze(0)
-        x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
+        # x = x.squeeze(0)
+        # x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
 
-        H = self.feature_extractor_part1(x)
-        H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
-        H = self.feature_extractor_part2(H)  # KxM
+        # H = self.feature_extractor_part1(x)
+        # H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+        # H = self.feature_extractor_part2(H)  # KxM
+
+        H = self.backbone(x)  # KxM
 
         A = self.attention(H)  # KxATTENTION_BRANCHES
         A = torch.transpose(A, 1, 0)  # ATTENTION_BRANCHESxK
@@ -138,11 +143,12 @@ class Attention(nn.Module):
         """Gibt H (Feature-Vektoren) und A (Attention-Gewichte) zurück."""
         self.eval()
         with torch.no_grad():
-            x = x.squeeze(0)
-            x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
-            H = self.feature_extractor_part1(x)
-            H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
-            H = self.feature_extractor_part2(H)  # [K, M]
+            # x = x.squeeze(0)
+            # x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
+            # H = self.feature_extractor_part1(x)
+            # H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+            # H = self.feature_extractor_part2(H)  # [K, M]
+            H = self.backbone(x)
             _, _, A = self.forward(x.unsqueeze(0))
         return H.cpu().numpy(), A.squeeze(0).cpu().numpy()
 

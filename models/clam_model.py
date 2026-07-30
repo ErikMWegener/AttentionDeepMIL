@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from models.backbone import Backbone
 from models.learned_grayscale import LearnedGrayscale
 """
 CLAM für binäres MIL mit CNN-Backbone (angepasst an Eriks Attention-MIL-Setup).
@@ -64,20 +65,21 @@ class CLAM(nn.Module):
         self.grayscaling = grayscaling
         self.instance_loss_fn = instance_loss_fn if instance_loss_fn is not None else nn.CrossEntropyLoss()
 
-        self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
-        # -- [ANPASSUNG 1] CNN-Backbone (identisch zu model.Attention) --------
-        self.feature_extractor_part1 = nn.Sequential(
-            nn.Conv2d(in_channels, 20, kernel_size=kernel_size, padding=kernel_size // 2),
-            nn.ReLU(),
-            nn.MaxPool2d(2, stride=2),
-            nn.Conv2d(20, num_maps, kernel_size=kernel_size, padding=kernel_size // 2),
-            nn.ReLU(),
-            nn.AdaptiveMaxPool2d((pool_size, pool_size)),
-        )
-        self.feature_extractor_part2 = nn.Sequential(
-            nn.Linear(num_maps * pool_size * pool_size, M),
-            nn.ReLU(),
-        )
+        # self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
+        # # -- [ANPASSUNG 1] CNN-Backbone (identisch zu model.Attention) --------
+        # self.feature_extractor_part1 = nn.Sequential(
+        #     nn.Conv2d(in_channels, 20, kernel_size=kernel_size, padding=kernel_size // 2),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(2, stride=2),
+        #     nn.Conv2d(20, num_maps, kernel_size=kernel_size, padding=kernel_size // 2),
+        #     nn.ReLU(),
+        #     nn.AdaptiveMaxPool2d((pool_size, pool_size)),
+        # )
+        # self.feature_extractor_part2 = nn.Sequential(
+        #     nn.Linear(num_maps * pool_size * pool_size, M),
+        #     nn.ReLU(),
+        # )
+        self.backbone = Backbone(in_channels=in_channels, kernel_size=kernel_size, num_maps=num_maps, pool_size=pool_size, M=M, grayscaling=grayscaling)
 
         # -- Attention-Zweig (gated, wie CLAM_SB) -----------------------------
         self.attention_net = AttnNetGated(L=M, D=L, dropout=dropout, n_classes=1)
@@ -163,11 +165,7 @@ class CLAM(nn.Module):
     # -- Forward --------------------------------------------------------------
 
     def forward(self, x, label=None, instance_eval=False):
-        x = x.squeeze(0)
-        x = self.grayscale_layer(x)
-        H = self.feature_extractor_part1(x)
-        H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
-        H = self.feature_extractor_part2(H)  # [N, M]
+        H = self.backbone(x)  # KxM
 
         A, H = self.attention_net(H)         # A: [N, 1], H: [N, M]
         A = torch.transpose(A, 1, 0)         # [1, N]
@@ -218,10 +216,11 @@ class CLAM(nn.Module):
             x = X.squeeze(0)
             K = x.shape[0]
             threshold = 1/K
-            x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
-            H = self.feature_extractor_part1(x)
-            H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
-            H = self.feature_extractor_part2(H)
+            # x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
+            # H = self.feature_extractor_part1(x)
+            # H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+            # H = self.feature_extractor_part2(H)
+            H = self.backbone(x)
             inst_probs = F.softmax(self.instance_classifier(H), dim=1)[:, 1]
             count = int((inst_probs > threshold).sum().item())
         return count, inst_probs
@@ -312,10 +311,11 @@ class CLAM(nn.Module):
         self.eval()
         with torch.no_grad():
             x_in = x.squeeze(0) if x.dim() == 5 else x
-            x_in = self.grayscale_layer(x_in)  # Apply learned grayscale conversion if enabled
-            H = self.feature_extractor_part1(x_in)
-            H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
-            H = self.feature_extractor_part2(H)
+            # x_in = self.grayscale_layer(x_in)  # Apply learned grayscale conversion if enabled
+            # H = self.feature_extractor_part1(x_in)
+            # H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
+            # H = self.feature_extractor_part2(H)
+            H = self.backbone(x_in)
             A, H = self.attention_net(H)
             A = F.softmax(torch.transpose(A, 1, 0), dim=1)
         return H.cpu().numpy(), A.squeeze(0).cpu().numpy()

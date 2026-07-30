@@ -63,6 +63,8 @@ parser.add_argument('--rgb', action='store_true', default=False,
                     help='use RGB input instead of grayscale')
 parser.add_argument('--grayscaling', action='store_true', default=False,
                     help='use learned grayscale conversion for RGB input (rgb and grayscale are exclusive)')
+parser.add_argument('--pretrained_backbone', type=str, default=None,
+                    help='path to pretrained backbone weights')
 #FPN parameters
 parser.add_argument('--model_dx', type=int, default=256,
                     help='FPN-MIL: shared FPN channel dimension d_x (default: 256)')
@@ -297,13 +299,31 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "model_pseudo_quantile_neg": model.pseudo_quantile_neg,
                         "model_architecture": "CLAM_SB (gated attn + instance classifier)"
                     }
-            
+
+                if args.pretrained_backbone:
+                    print(f"Loading pretrained backbone weights from {args.pretrained_backbone}")
+                    state_dict = torch.load(args.pretrained_backbone, map_location='cpu', weights_only=True)
+                    if 'backbone' in state_dict:
+                        model.backbone.load_state_dict(state_dict['backbone'], strict=True)
+                    else:
+                        model.backbone.load_state_dict(state_dict, strict=True)
+                    print("Pretrained backbone weights loaded successfully.")
 
                 if args.cuda:
                     model.cuda()
 
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.reg)
 
+                if args.pretrained_backbone:
+                    backbone_params = list(model.backbone.parameters())
+                    head_params = [p for n, p in model.named_parameters()
+                        if not n.startswith("backbone.")]
+
+                    optimizer = torch.optim.Adam([
+                        {'params': backbone_params, 'lr': args.lr * 0.01},
+                        {'params': head_params, 'lr': args.lr}
+                    ])
+                    
                 # ── Puffer fuer Counting-Threshold-Auswertung (nur CLAM) ──────────────
                 val_scores_per_bag = []   # Instanz-Scores je Val-Bag (letzte Epoche)
                 val_true_counts = []      # wahre Counts je Val-Bag
@@ -695,7 +715,7 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                         # 1) Globaler Sweep -- Bias/MAE-Kurve ueber Thresholds (gegatet)
                         print("\n--- Counting-Threshold-Sweep (Test, bag-gegatet) ---")
-                        for thr in np.arange(0.20, 0.75, 0.05):
+                        for thr in np.arange(0.05, 0.75, 0.05):
                             bias, mae = CLAM.counting_scores_per_bag(scores_per_bag, true_counts, thr, pred_pos=gate)
                             print(f"  thr={thr:.2f}  Bias={bias:+.2f}  MAE={mae:.2f}")
                             mlflow.log_metric("count_sweep_bias", bias, step=int(thr * 100))
