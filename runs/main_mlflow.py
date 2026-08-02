@@ -17,7 +17,7 @@ import pandas as pd
 import torch.nn.functional as F
 
 from data.data_management.dataset_manager import DatasetReader
-from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics
+from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics, calculate_score_quantiles
 from models.model import Attention, AttentionBatchNorm, AttentionDropout, AttentionThirdConv, GatedAttention
 from models.fpn_mil_model import FPNMIL
 from models.learned_grayscale import LearnedGrayscale
@@ -97,6 +97,8 @@ parser.add_argument('--run_name', type=str, default=None, metavar='RUN',
                     help='name of the MLflow run (default: None)')
 parser.add_argument('--log_attention_weights', action='store_true', default=False,
                     help='log attention weights as artifact in MLflow')
+parser.add_argument('--log_instance_scores', action='store_true', default=False,
+                    help='CLAM: log per-bag instance classifier scores and instance labels as artifact in MLflow')
 parser.add_argument('--visualize_features', action='store_true', default=False,
                     help='visualize extracted features using UMAP and log the plot to MLflow')
 
@@ -174,6 +176,14 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
     if args.log_attention_weights:
         all_runs_results["attention_weights"] = []
+
+    # Instanz-Scores des CLAM-Instanzklassifikators je Test-Bag (analog zu attention_weights)
+    log_instance_scores = args.log_instance_scores and args.model == 'clam'
+    if log_instance_scores:
+        all_runs_results["instance_scores"] = []
+        all_runs_results["instance_labels"] = []
+    elif args.log_instance_scores:
+        print("Warning: --log_instance_scores ist nur fuer --model clam verfuegbar. Wird ignoriert.")
 
     all_feature_data = []  # Liste zum Speichern von H, A, bag_lbls, inst_lbls und seed_ids für alle Seeds
 
@@ -425,6 +435,9 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     val_error = 0.
                     y_true, y_pred, y_prob = [], [], []
 
+                    # Instanz-Scores/-Labels des CLAM-Instanzklassifikators fuer die Quantil-Auswertung
+                    val_inst_scores, val_inst_labels = [], []
+
                     # Instanz-Scores fuer die Val-Kalibrierung nur in der letzten Epoche sammeln
                     collect_val_scores = args.count_threshold_eval and args.model == 'clam' and epoch == args.epochs
                     if collect_val_scores:
@@ -452,9 +465,19 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                 y_prob.append(prob_pos.cpu().item())
                                 y_pred.append(pred.cpu().item())
 
+                                # Instanz-Scores aus dem Instanz-Klassifikator (NICHT aus Attention)
+                                _, inst_probs = model.count_positive_instances(patches.unsqueeze(0), threshold=0.5)
+                                inst_probs_np = inst_probs.cpu().numpy()
+
+                                inst_lbl = instance_label.cpu().numpy().flatten()
+                                if inst_lbl.size and inst_lbl.max() > 1:   # MNIST Multi-Class -> binaer
+                                    inst_lbl = (inst_lbl == 9).astype(int)
+                                m = min(len(inst_lbl), inst_probs_np.shape[0])
+                                val_inst_labels.extend(inst_lbl[:m].tolist())
+                                val_inst_scores.extend(inst_probs_np[:m].tolist())
+
                                 if collect_val_scores:
-                                    _, inst_probs = model.count_positive_instances(patches.unsqueeze(0), threshold=0.5)
-                                    val_scores_per_bag.append(inst_probs.cpu().numpy())
+                                    val_scores_per_bag.append(inst_probs_np)
                                     val_true_counts.append(int(count.item()) if torch.is_tensor(count) else int(count))
                                     val_pred_pos_per_bag.append(bool(pred.cpu().item() == 1))
                             else:
@@ -491,7 +514,17 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                         "val_mae": metrics['mae'],
                         "val_rmse": metrics['rmse'],
                         "val_bias": metrics['bias']
-                    }, step=epoch)      
+                    }, step=epoch)
+
+                    # Quantile der Instanz-Scores (nur CLAM, Scores des Instanzklassifikators)
+                    if args.model == 'clam' and len(val_inst_labels) > 0:
+                        quantiles = calculate_score_quantiles(val_inst_scores, val_inst_labels)
+                        print('Val Instanz-Scores: positiv median={pos_q50:.3f}, 90%-Perzentil={pos_q90:.3f} | '
+                              'negativ median={neg_q50:.3f}, 90%-Perzentil={neg_q90:.3f}\n'.format(**quantiles))
+                        # NaN (keine positiven bzw. negativen Instanzen) nicht loggen
+                        mlflow.log_metrics(
+                            {f'val_inst_{k}': v for k, v in quantiles.items() if not np.isnan(v)},
+                            step=epoch)
                 
                 
                 def test():
@@ -501,7 +534,9 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                     y_true, y_pred, y_prob = [], [], []
                     count_truth, count_pred = [], []
                     attention_agg = []
-                    all_instance_labels = []  
+                    inst_score_agg = []   # Instanz-Scores je Test-Bag (Artefakt-Logging)
+                    inst_label_agg = []   # zugehoerige Instanz-Labels je Test-Bag
+                    all_instance_labels = []
                     all_attention_weights = []  
                     all_thresholds = []
 
@@ -545,6 +580,10 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
                                 m = min(len(inst_lbl), inst_probs.shape[0])
                                 patch_inst_labels.extend(inst_lbl[:m].tolist())
                                 patch_inst_scores.extend(inst_probs[:m].cpu().numpy().tolist())
+
+                                if log_instance_scores:
+                                    inst_score_agg.append(inst_probs[:m].cpu().numpy().tolist())
+                                    inst_label_agg.append(inst_lbl[:m].tolist())
                             else:
                                 # Single forward pass to avoid redindant computation
                                 Y_prob, predicted_label, attention_weights = model(patches)
@@ -765,6 +804,10 @@ with mlflow.start_run(run_name=args.run_name if args.run_name else f"{args.model
 
                     if args.log_attention_weights and attention_agg:
                         all_runs_results["attention_weights"].extend(attention_agg)
+
+                    if log_instance_scores and inst_score_agg:
+                        all_runs_results["instance_scores"].extend(inst_score_agg)
+                        all_runs_results["instance_labels"].extend(inst_label_agg)
 
                     return metrics, count_truth, count_pred
                 

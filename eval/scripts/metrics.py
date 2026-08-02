@@ -50,6 +50,44 @@ def calculate_metrics(y_true, y_pred, y_prob):
         'bias': bias,
     }
 
+def calculate_score_quantiles(inst_scores, inst_labels, quantiles=(0.5, 0.9)):
+    """Quantile der Instanz-Scores, getrennt nach positiven und negativen Instanzen.
+
+    Zeigt, wie gut positive und negative Instanzen durch den Score getrennt werden
+    (unabhaengig von einer konkreten Zaehl-Schwelle).
+
+    Args:
+        inst_scores (array-like): Instanz-Scores (z.B. Instanz-Klassifikator-Wahrscheinlichkeiten).
+        inst_labels (array-like): Instanz-Labels (1 = positiv, 0 = negativ, -1 = unbekannt).
+        quantiles (tuple): Auszuwertende Quantile (Default: Median und 90%-Perzentil).
+
+    Returns:
+        dict: Quantile je Klasse ('pos_q50', 'neg_q90', ...), Anzahl der Instanzen
+              und der Abstand Median(positiv) - 90%-Perzentil(negativ).
+    """
+    scores = np.asarray(inst_scores, dtype=np.float64).ravel()
+    labels = np.asarray(inst_labels).ravel()
+
+    # -1 markiert fehlende Instanz-Labels (siehe DatasetReader)
+    valid = labels >= 0
+    scores, labels = scores[valid], labels[valid]
+
+    pos = scores[labels == 1]
+    neg = scores[labels == 0]
+
+    results = {'n_pos': float(pos.size), 'n_neg': float(neg.size)}
+    for q in quantiles:
+        key = f'q{int(round(q * 100))}'
+        results[f'pos_{key}'] = float(np.quantile(pos, q)) if pos.size else float('nan')
+        results[f'neg_{key}'] = float(np.quantile(neg, q)) if neg.size else float('nan')
+
+    if pos.size and neg.size:
+        results['pos_median_minus_neg_q90'] = float(np.median(pos) - np.quantile(neg, 0.9))
+    else:
+        results['pos_median_minus_neg_q90'] = float('nan')
+
+    return results
+
 def calculate_counting_metrics(count_truth, count_pred):
     """Calculate counting accuracy, MAE, and RMSE.
 
