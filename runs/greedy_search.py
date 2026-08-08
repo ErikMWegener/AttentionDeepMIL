@@ -86,6 +86,20 @@ def run_trial(params, args, run_name):
         cmd += ["--epochs", str(args.epochs)]
     if args.naive_counting:
         cmd.append("--naive_counting")
+
+    # Durchgereichte Argumente: nur setzen, wenn explizit angegeben --
+    # sonst gilt der Wert aus der --config-Datei.
+    for name in ("model", "dataset", "path",
+                 "clam_k_sample", "clam_bag_weight",
+                 "clam_pseudo_quantile_pos", "clam_pseudo_quantile_neg"):
+        value = getattr(args, name)
+        if value is not None:
+            cmd += [f"--{name}", str(value)]
+    if args.clam_pseudo_threshold:
+        cmd.append("--clam_pseudo_threshold")
+    if args.count_threshold_eval:
+        cmd.append("--count_threshold_eval")
+
     for k, v in params.items():
         cmd += [f"--{k}", str(v)]
 
@@ -146,6 +160,23 @@ def main():
     parser.add_argument("--run_prefix", default="greedy")
     parser.add_argument("--final_seeds", nargs="+", type=int, default=None,
                         help="Seeds für einen finalen Lauf der besten Config (optional)")
+    # ── Durchgereicht an main_mlflow.py (None = Wert aus der Config) ─────────
+    parser.add_argument("--model", default=None,
+                        help="Modelltyp, z.B. 'attention' oder 'clam'")
+    parser.add_argument("--dataset", default=None, help="Datensatz-Gruppe in der H5-Datei")
+    parser.add_argument("--path", default=None, help="Pfad zur H5-Datei")
+    parser.add_argument("--clam_k_sample", type=int, default=None,
+                        help="CLAM: Anzahl Top-/Bottom-Instanzen fuers Clustering")
+    parser.add_argument("--clam_bag_weight", type=float, default=None,
+                        help="CLAM: Gewicht des Bag-Loss im kombinierten Loss")
+    parser.add_argument("--clam_pseudo_threshold", action="store_true", default=False,
+                        help="CLAM: Quantil-Pseudolabels statt Top-k-Clustering")
+    parser.add_argument("--clam_pseudo_quantile_pos", type=float, default=None,
+                        help="CLAM: Quantil, ab dem Instanzen pseudo-positiv sind")
+    parser.add_argument("--clam_pseudo_quantile_neg", type=float, default=None,
+                        help="CLAM: Quantil, bis zu dem Instanzen pseudo-negativ sind")
+    parser.add_argument("--count_threshold_eval", action="store_true", default=False,
+                        help="Zaehlung ueber gelernten Schwellwert evaluieren")
     parser.add_argument("--params", nargs="+", default=None,
                         choices=list(DEFAULT_ORDER),
                         help="Welche Parameter optimiert werden (default: alle). "
