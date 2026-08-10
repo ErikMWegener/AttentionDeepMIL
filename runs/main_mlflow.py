@@ -123,6 +123,14 @@ def build_arg_parser():
                         help='use learned grayscale conversion for RGB input (rgb and grayscale are exclusive)')
     parser.add_argument('--pretrained_backbone', type=str, default=None,
                         help='path to pretrained backbone weights')
+    parser.add_argument('--save_model', type=str, default=None, metavar='PATH',
+                        help='save the trained state_dict after testing; PATH is a directory '
+                             '(filename is generated) or a .pth file. Der Seed wird immer an '
+                             'den Dateinamen angehaengt (default: None)')
+    parser.add_argument('--load_model', type=str, default=None, metavar='PATH',
+                        help='load a state_dict into the model before training (default: None)')
+    parser.add_argument('--eval_only', action='store_true', default=False,
+                        help='skip training and only run the test loop (use with --load_model)')
 
     # ── FPN parameters ────────────────────────────────────────────────────────
     parser.add_argument('--model_dx', type=int, default=256,
@@ -421,6 +429,40 @@ def load_pretrained_backbone(model, weights_path):
     else:
         model.backbone.load_state_dict(state_dict, strict=True)
     print("Pretrained backbone weights loaded successfully.")
+
+
+def save_model_state(model, args, seed):
+    """Save the model's state_dict to disk (and log it as MLflow artifact).
+
+    ``args.save_model`` may be a directory (the filename is then generated from
+    model/dataset) or a ``.pth``/``.pt`` file path. The seed is always appended
+    so runs over several seeds do not overwrite each other.
+
+    Returns:
+        Path of the written checkpoint file.
+    """
+    target = args.save_model
+    if target.endswith(('.pth', '.pt')):
+        stem, ext = os.path.splitext(target)
+    else:
+        stem = os.path.join(target, f"{args.model}_{args.dataset}")
+        ext = '.pth'
+    path = f"{stem}_seed{seed}{ext}"
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    torch.save(model.state_dict(), path)
+    print(f"Model state_dict gespeichert: {path}")
+
+    mlflow.log_artifact(path, artifact_path="state_dicts")
+    return path
+
+
+def load_model_state(model, weights_path, device):
+    """Load a state_dict saved by ``save_model_state`` into ``model``."""
+    print(f"Lade state_dict aus {weights_path}")
+    state_dict = torch.load(weights_path, map_location=device, weights_only=True)
+    model.load_state_dict(state_dict, strict=True)
+    print("State_dict erfolgreich geladen.")
 
 
 def build_optimizer(model, args):
@@ -1168,6 +1210,10 @@ def run_seed(args, seed, results, all_metrics, all_feature_data, log_instance_sc
         if args.cuda:
             model.cuda()
 
+        # ── Gelernte Gewichte laden (Weitertrainieren oder --eval_only) ───────
+        if args.load_model:
+            load_model_state(model, args.load_model, "cuda" if args.cuda else "cpu")
+
         optimizer = build_optimizer(model, args)
 
         ctx = RunContext(args=args, seed=seed,
@@ -1182,16 +1228,26 @@ def run_seed(args, seed, results, all_metrics, all_feature_data, log_instance_sc
             ctx.p_train = compute_train_positive_fraction(train_loader)
 
         # ── Training ──────────────────────────────────────────────────────────
-        print('Starting training!')
-        for epoch in range(1, args.epochs + 1):
-            train_one_epoch(ctx, epoch)
-            validate(ctx, epoch)
+        if args.eval_only:
+            print('--eval_only: Training wird uebersprungen.')
+            # Val-Scores fuer die Threshold-Kalibrierung trotzdem einsammeln
+            if args.count_threshold_eval and ctx.is_clam:
+                validate(ctx, args.epochs)
+        else:
+            print('Starting training!')
+            for epoch in range(1, args.epochs + 1):
+                train_one_epoch(ctx, epoch)
+                validate(ctx, epoch)
 
         # ── Testing ───────────────────────────────────────────────────────────
         print('Starting testing!')
         metrics, seed_truth, seed_pred = test(ctx, results)
 
         all_metrics.append(metrics)
+
+        # ── State_dict speichern ──────────────────────────────────────────────
+        if args.save_model and not args.eval_only:
+            save_model_state(model, args, seed)
         mlflow.pytorch.log_model(model, "model")  # Log the model to MLflow
 
         # ── Feature visualization (child run / per seed) ──────────────────────
