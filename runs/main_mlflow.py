@@ -151,6 +151,9 @@ def build_arg_parser():
                         help='CLAM pseudo-threshold: Quantil, bis zu dem Instanzen pseudo-negativ gelabelt werden (default: 0.25)')
     parser.add_argument('--count_threshold_eval', action='store_true', default=False,
                         help='CLAM: vergleicht Count-Threshold-Strategien (Sweep, Otsu, Val-kalibriert, Baseline) im Test; alle bag-gegatet')
+    parser.add_argument('--calibrate_count_threshold', action='store_true', default=False,
+                        help='CLAM: kalibriert den Zaehl-Threshold auf dem Val-Split und benutzt ihn '
+                             'fuer count_positive_instances im Test (statt Default 0.5)')
     parser.add_argument('--soft_counting', action='store_true', default=False,
                         help='CLAM: zusaetzlicher Soft-Count (Summe der Instanz-Wahrscheinlichkeiten, bag-gegatet) in count_threshold_eval')
 
@@ -250,6 +253,7 @@ class RunContext:
     val_scores_per_bag: list = field(default_factory=list)   # instance scores per val bag (last epoch)
     val_true_counts: list = field(default_factory=list)      # true counts per val bag
     val_pred_pos_per_bag: list = field(default_factory=list)  # bag prediction per val bag (calibration gate)
+    count_threshold: Optional[float] = None    # auf Val kalibrierter Zaehl-Threshold (None = nicht kalibriert)
 
     @property
     def is_clam(self):
@@ -634,7 +638,8 @@ def validate(ctx, epoch):
     val_inst_scores, val_inst_labels = [], []
 
     # ── Collect calibration scores only in the last epoch ─────────────────────
-    collect_val_scores = args.count_threshold_eval and ctx.is_clam and epoch == args.epochs
+    collect_val_scores = ((args.count_threshold_eval or args.calibrate_count_threshold)
+                          and ctx.is_clam and epoch == args.epochs)
     if collect_val_scores:
         ctx.val_scores_per_bag.clear()
         ctx.val_true_counts.clear()
@@ -725,6 +730,36 @@ def validate(ctx, epoch):
 # Testing
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _calibrate_count_threshold(ctx):
+    """Kalibriere den globalen Zaehl-Threshold auf dem Validierungssplit (CLAM).
+
+    Muss VOR dem Test-Loop laufen, damit ``count_positive_instances`` dort bereits
+    mit dem kalibrierten Wert zaehlt. Das Ergebnis wird am Modell hinterlegt
+    (Buffer -> wandert ins state_dict) und auf dem Kontext gemerkt, damit
+    ``_evaluate_count_thresholds`` nicht ein zweites Mal kalibriert.
+    """
+    args = ctx.args
+    if not (args.calibrate_count_threshold and ctx.is_clam):
+        return
+
+    if not ctx.val_scores_per_bag:
+        print("Threshold-Kalibrierung uebersprungen (keine Val-Scores gesammelt).")
+        return
+
+    val_gate = np.asarray(ctx.val_pred_pos_per_bag, dtype=bool)
+    thr, val_bias, val_mae = CLAM.calibrate_threshold(
+        ctx.val_scores_per_bag, ctx.val_true_counts, pred_pos=val_gate)
+
+    ctx.count_threshold = thr
+    ctx.model.set_count_threshold(thr)
+
+    print(f'Zaehl-Threshold auf Val kalibriert: thr={thr:.2f} '
+          f'(Val-Bias={val_bias:+.2f}, Val-MAE={val_mae:.2f})')
+    mlflow.log_metrics({'count_calibrated_threshold': thr,
+                        'count_calibrated_val_bias': val_bias,
+                        'count_calibrated_val_mae': val_mae})
+
+
 def _run_test_loop(ctx, results):
     """Forward every test bag once and collect all per-bag values.
 
@@ -804,8 +839,9 @@ def _run_test_loop(ctx, results):
             if args.naive_counting:
                 if predicted_label.cpu().item() == 1:
                     if ctx.is_clam:
+                        # threshold=None -> model.count_threshold (ggf. auf Val kalibriert)
                         predicted_count, _ = model.count_positive_instances(patches.unsqueeze(0))
-                        threshold = None
+                        threshold = float(model.count_threshold)
                     else:
                         predicted_count, _, threshold = model.count_positive_instances(patches)
                 else:
@@ -965,10 +1001,14 @@ def _evaluate_count_thresholds(ctx, buf, metrics):
     metrics['count_otsu_mae'] = otsu_mae
 
     # ── 3) Global threshold, bias-calibrated on validation (val + test gated) ─
-    if len(ctx.val_scores_per_bag) > 0:
-        val_gate = np.asarray(ctx.val_pred_pos_per_bag, dtype=bool)
-        cal_thr, cal_bias_val, cal_mae_val = CLAM.calibrate_threshold(
-            ctx.val_scores_per_bag, ctx.val_true_counts, pred_pos=val_gate)
+    if ctx.count_threshold is not None or len(ctx.val_scores_per_bag) > 0:
+        if ctx.count_threshold is not None:
+            # Bereits vor dem Test-Loop kalibriert (--calibrate_count_threshold)
+            cal_thr = ctx.count_threshold
+        else:
+            val_gate = np.asarray(ctx.val_pred_pos_per_bag, dtype=bool)
+            cal_thr, _cal_bias_val, _cal_mae_val = CLAM.calibrate_threshold(
+                ctx.val_scores_per_bag, ctx.val_true_counts, pred_pos=val_gate)
         test_bias, test_mae = CLAM.counting_scores_per_bag(
             buf.scores_per_bag, buf.true_counts, cal_thr, pred_pos=gate)
         print(f"  Kalibriert (thr={cal_thr:.2f} aus Val)  Test-Bias={test_bias:+.2f}  Test-MAE={test_mae:.2f}")
@@ -1006,6 +1046,9 @@ def test(ctx, results):
     Returns:
         (metrics, count_truth, count_pred) for the current seed.
     """
+    # ── Zaehl-Threshold aus dem Val-Split (vor dem Test-Loop!) ────────────────
+    _calibrate_count_threshold(ctx)
+
     # ── Forward pass over the test split ──────────────────────────────────────
     buf = _run_test_loop(ctx, results)
 
@@ -1231,7 +1274,7 @@ def run_seed(args, seed, results, all_metrics, all_feature_data, log_instance_sc
         if args.eval_only:
             print('--eval_only: Training wird uebersprungen.')
             # Val-Scores fuer die Threshold-Kalibrierung trotzdem einsammeln
-            if args.count_threshold_eval and ctx.is_clam:
+            if (args.count_threshold_eval or args.calibrate_count_threshold) and ctx.is_clam:
                 validate(ctx, args.epochs)
         else:
             print('Starting training!')
