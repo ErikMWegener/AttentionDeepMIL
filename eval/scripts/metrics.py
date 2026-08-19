@@ -89,7 +89,7 @@ def calculate_score_quantiles(inst_scores, inst_labels, quantiles=(0.5, 0.9)):
     return results
 
 def calculate_counting_metrics(count_truth, count_pred):
-    """Calculate counting accuracy, MAE, and RMSE.
+    """Calculate counting accuracy, MAE, and RMSE, bias, R2, and MAPE.
 
     Args:
         count_truth (array-like): Ground-truth counts (non-negative integers).
@@ -104,11 +104,17 @@ def calculate_counting_metrics(count_truth, count_pred):
     counting_accuracy = sum(1 for truth, pred in zip(count_truth, count_pred) if truth == pred) / len(count_pred)
     counting_mae = mean_absolute_error(count_truth, count_pred)
     counting_rmse = np.sqrt(mean_squared_error(count_truth, count_pred))
+    counting_bias = np.mean(count_pred - count_truth)
+    counting_r2 = np.corrcoef(count_truth, count_pred)[0, 1] ** 2 if len(count_truth) > 1 else float('nan')
+    counting_mape = np.mean(np.abs((count_truth - count_pred) / np.where(count_truth == 0, 1, count_truth))) * 100
 
     return {
         'counting_accuracy': counting_accuracy,
         'counting_mae': counting_mae,
-        'counting_rmse': counting_rmse
+        'counting_rmse': counting_rmse,
+        'counting_bias': counting_bias,
+        'counting_r2': counting_r2,
+        'counting_mape': counting_mape
     }
 
 def save_results_to_csv(filepath, config, metrics):
