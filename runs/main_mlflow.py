@@ -5,6 +5,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import argparse
+import tempfile
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -19,6 +20,7 @@ import matplotlib.pyplot as plt
 import yaml
 import pandas as pd
 from sklearn.metrics import roc_auc_score, precision_score, recall_score
+from scipy import stats
 
 from data.data_management.dataset_manager import DatasetReader
 from eval.scripts.metrics import calculate_metrics, calculate_counting_metrics, calculate_score_quantiles
@@ -27,6 +29,7 @@ from models.fpn_mil_model import FPNMIL
 from models.clam_model import CLAM
 from models.learned_grayscale import LearnedGrayscale
 import visualize_features as vf
+from full_image_count import evaluate_image_set, fit_calibration, plot_pred_vs_gt
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -156,6 +159,23 @@ def build_arg_parser():
                              'fuer count_positive_instances im Test (statt Default 0.5)')
     parser.add_argument('--soft_counting', action='store_true', default=False,
                         help='CLAM: zusaetzlicher Soft-Count (Summe der Instanz-Wahrscheinlichkeiten, bag-gegatet) in count_threshold_eval')
+
+    # ── Ganzbild-Auswertung (CLAM) ────────────────────────────────────────────
+    parser.add_argument('--full_image_eval', type=str, default=None, metavar='DIR',
+                        help='CLAM: Verzeichnis mit vollen Bildern + Punkt-Annotationen fuer die Ganzbild-Auswertung')
+    parser.add_argument('--full_image_only', action='store_true', default=False,
+                        help='Nur Ganzbild-Auswertung mit --load_model: kein Dataloader, kein Training, kein Test')
+    parser.add_argument('--full_image_ids', nargs='+', type=str, default=None,
+                        help='IDs der auszuwertenden Bilder ohne Endung (default: alle im Verzeichnis)')
+    parser.add_argument('--full_image_patch_size', type=int, default=128,
+                        help='Kantenlaenge der Patches der Ganzbild-Auswertung (muss zur Bag-Erzeugung passen)')
+    parser.add_argument('--full_image_ext', type=str, default='.JPG',
+                        help='Dateiendung der vollen Bilder (default: .JPG)')
+    parser.add_argument('--full_image_threshold', type=float, default=None,
+                        help='Zaehl-Threshold der Ganzbild-Auswertung (default: kalibrierter Wert aus dem state_dict)')
+    parser.add_argument('--full_image_calibration', type=str, default='none',
+                        choices=['none', 'linear', 'isotonic'],
+                        help='Count-Kalibrierung fuer den Ganzbild-Plot (in-sample, nur deskriptiv)')
 
     # ── Data parameters ───────────────────────────────────────────────────────
     parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5',
@@ -933,17 +953,19 @@ def _log_counting_metrics(ctx, buf, results, metrics):
     if not (ctx.args.naive_counting and len(buf.count_pred) > 0):
         return
 
+    # ── Unwrap tensors first: the metrics expect flat 1-D int sequences ──────
+    # (Ein Tensor der Form [1] pro Bag ergaebe sonst ein (N,1)-Array und
+    #  np.corrcoef in calculate_counting_metrics bricht ab.)
+    clean_truth = [int(c[0].item()) if isinstance(c, list) and torch.is_tensor(c[0])
+                   else int(c.item()) if torch.is_tensor(c) else int(c) for c in buf.count_truth]
+    clean_pred = [int(p.item()) if torch.is_tensor(p) else int(p) for p in buf.count_pred]
+
     # ── Metrics ───────────────────────────────────────────────────────────────
-    counting_metrics = calculate_counting_metrics(buf.count_truth, buf.count_pred)
+    counting_metrics = calculate_counting_metrics(clean_truth, clean_pred)
     metrics['counting_accuracy'] = counting_metrics['counting_accuracy']
     metrics['counting_mae'] = counting_metrics['counting_mae']
     metrics['counting_rmse'] = counting_metrics['counting_rmse']
     mlflow.log_metric('counting_accuracy', counting_metrics['counting_accuracy'])
-
-    # ── Unwrap tensors so the values can be logged/plotted ────────────────────
-    clean_truth = [int(c[0].item()) if isinstance(c, list) and torch.is_tensor(c[0])
-                   else int(c.item()) if torch.is_tensor(c) else int(c) for c in buf.count_truth]
-    clean_pred = [int(p.item()) if torch.is_tensor(p) else int(p) for p in buf.count_pred]
 
     results["count_truth"].extend(clean_truth)
     results["count_pred"].extend(clean_pred)
@@ -1222,6 +1244,117 @@ def log_aggregated_feature_plot(all_feature_data):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Ganzbild-Auswertung
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_full_image_eval(model, args):
+    """Kachelt volle Bilder, zaehlt sie und loggt alles in den aktiven MLflow-Run.
+
+    Nutzt den Zaehl-Threshold aus dem ``count_threshold``-Buffer des Modells,
+    also den auf Val kalibrierten Wert, sofern kalibriert oder aus einem
+    state_dict geladen. ``--full_image_threshold`` ueberschreibt ihn.
+
+    Returns:
+        Der Ergebnis-DataFrame, oder None wenn nichts ausgewertet werden konnte.
+    """
+    if args.model != 'clam':
+        print("Warning: --full_image_eval ist nur fuer --model clam verfuegbar. Wird ignoriert.")
+        return None
+
+    image_ids = args.full_image_ids
+    if not image_ids:
+        image_ids = sorted(os.path.splitext(f)[0] for f in os.listdir(args.full_image_eval)
+                           if f.endswith(args.full_image_ext))
+    if not image_ids:
+        print(f"Warning: keine {args.full_image_ext}-Bilder in {args.full_image_eval}.")
+        return None
+
+    print(f"\nStarting full image evaluation on {len(image_ids)} images...")
+    df = evaluate_image_set(model, image_ids, args.full_image_eval,
+                            args.full_image_patch_size,
+                            grayscale=not args.rgb,
+                            threshold=args.full_image_threshold,
+                            img_ext=args.full_image_ext)
+
+    metrics = {'full_image_n': float(len(df)),
+               'full_image_out_of_grid': float(df['out_of_grid'].sum())}
+
+    # ── Bild-Level: Zaehlfehler fuer hard und soft count ──────────────────────
+    for col in ('hard_count', 'soft_count'):
+        resid = df[col] - df['gt_count']
+        metrics[f'full_image_{col}_mae'] = float(resid.abs().mean())
+        metrics[f'full_image_{col}_rmse'] = float(np.sqrt((resid ** 2).mean()))
+        metrics[f'full_image_{col}_bias'] = float(resid.mean())
+        if len(df) >= 3 and df[col].nunique() > 1 and df['gt_count'].nunique() > 1:
+            metrics[f'full_image_{col}_spearman'] = float(stats.spearmanr(df[col], df['gt_count']).statistic)
+    metrics['full_image_count_accuracy'] = calculate_counting_metrics(
+        df['gt_count'], df['hard_count'])['counting_accuracy']
+
+    # ── Patch-Level: AUC ueber alle Bilder (points_per_patch liefert die Labels)
+    scores = np.concatenate(df['patch_signals'].to_list())
+    labels = (np.concatenate(df['points_per_patch'].to_list()) > 0).astype(int)
+    if labels.min() != labels.max():
+        metrics['full_image_patch_auc'] = float(roc_auc_score(labels, scores))
+
+    # ── Kalibrierung und Plots ────────────────────────────────────────────────
+    if len(df) < 3:
+        print("Ganzbild-Plots uebersprungen (plot_pred_vs_gt braucht mindestens 3 Bilder).")
+    else:
+        for count_col, frac_col in (('hard_count', 'hard_frac'), ('soft_count', 'soft_frac')):
+            cal_fn = None
+            if args.full_image_calibration != 'none':
+                cal_fn = fit_calibration(df[count_col], df['gt_count'],
+                                         kind=args.full_image_calibration)
+                pred = np.asarray(cal_fn(df[count_col]), dtype=float).ravel()
+                metrics[f'full_image_{count_col}_cal_mae'] = float(np.abs(pred - df['gt_count']).mean())
+                if cal_fn.kind == 'linear':
+                    metrics[f'full_image_{count_col}_cal_slope'] = float(cal_fn.estimator.coef_[0])
+                    metrics[f'full_image_{count_col}_cal_intercept'] = float(cal_fn.estimator.intercept_)
+            fig = plot_pred_vs_gt(df, count_col=count_col, gt_col='gt_count',
+                                  cal_fn=cal_fn, frac_col=frac_col,
+                                  title=f"Full image counting - {count_col}")
+            mlflow.log_figure(fig, f"full_image_{count_col}.png")
+            plt.close(fig)
+
+    mlflow.log_metrics(metrics)
+    for key, value in metrics.items():
+        print(f"  {key}: {value:.4f}")
+
+    # ── Tabelle und Roh-Signale ───────────────────────────────────────────────
+    # Die beiden Array-Spalten muessen raus, sonst scheitert die JSON-Serialisierung.
+    mlflow.log_table(df.drop(columns=['patch_signals', 'points_per_patch']),
+                     artifact_file="full_image_results.json")
+    npz_path = os.path.join(tempfile.mkdtemp(), "full_image_patch_signals.npz")
+    np.savez_compressed(
+        npz_path,
+        **{f"{r.image_id}_scores": r.patch_signals for r in df.itertuples()},
+        **{f"{r.image_id}_gt": r.points_per_patch for r in df.itertuples()})
+    mlflow.log_artifact(npz_path)
+
+    return df
+
+
+def run_full_image_only(args):
+    """Ganzbild-Auswertung mit vortrainiertem Modell: keine Loader, kein Training, kein Test."""
+    if args.model != 'clam':
+        raise ValueError('--full_image_only ist nur fuer --model clam verfuegbar.')
+    if not args.load_model:
+        raise ValueError('--full_image_only benoetigt --load_model.')
+    if not args.full_image_eval:
+        raise ValueError('--full_image_only benoetigt --full_image_eval.')
+
+    torch.manual_seed(args.seeds[0])
+    model, model_tags = build_model(args)
+    if args.cuda:
+        model.cuda()
+        print('\nGPU is ON!')
+    load_model_state(model, args.load_model, "cuda" if args.cuda else "cpu")
+
+    run_full_image_eval(model, args)
+    return model_tags
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Single seed run
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1288,6 +1421,10 @@ def run_seed(args, seed, results, all_metrics, all_feature_data, log_instance_sc
 
         all_metrics.append(metrics)
 
+        # ── Ganzbild-Auswertung (nach der Threshold-Kalibrierung) ─────────────
+        if args.full_image_eval:
+            run_full_image_eval(model, args)
+
         # ── State_dict speichern ──────────────────────────────────────────────
         if args.save_model and not args.eval_only:
             save_model_state(model, args, seed)
@@ -1342,20 +1479,25 @@ def main():
         results = init_results_container(args, log_instance_scores)
 
         try:
-            # ── Iterate over each seed ────────────────────────────────────────
-            for seed in args.seeds:
-                model_tags = run_seed(args, seed, results, all_metrics,
-                                      all_feature_data, log_instance_scores)
+            if args.full_image_only:
+                # ── Nur Ganzbild-Auswertung, flach im Parent Run ──────────────
+                model_tags = run_full_image_only(args)
+                mlflow.set_tags(model_tags)
+            else:
+                # ── Iterate over each seed ────────────────────────────────────
+                for seed in args.seeds:
+                    model_tags = run_seed(args, seed, results, all_metrics,
+                                          all_feature_data, log_instance_scores)
 
-            # ── Logging in parent run after all seeds have been processed ─────
-            mlflow.log_table(results, artifact_file="aggregated_run_results.json")
-            mlflow.set_tags(model_tags)
+                # ── Logging in parent run after all seeds have been processed ─
+                mlflow.log_table(results, artifact_file="aggregated_run_results.json")
+                mlflow.set_tags(model_tags)
 
-            log_aggregated_metrics(all_metrics)
-            log_aggregated_counting_plot(results)
+                log_aggregated_metrics(all_metrics)
+                log_aggregated_counting_plot(results)
 
-            if args.visualize_features:
-                log_aggregated_feature_plot(all_feature_data)
+                if args.visualize_features:
+                    log_aggregated_feature_plot(all_feature_data)
 
         except Exception as e:
             print(f"An error occurred: {e}")
