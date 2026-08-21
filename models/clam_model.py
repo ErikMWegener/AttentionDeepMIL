@@ -49,7 +49,8 @@ class CLAM(nn.Module):
     def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4,
                  in_channels=3, k_sample=8, pseudo_threshold = False, dropout=0.25,
                  instance_loss_fn=None, subtyping=False,
-                 pseudo_quantile_pos=0.5, pseudo_quantile_neg=0.25, grayscaling=False):
+                 pseudo_quantile_pos=0.5, pseudo_quantile_neg=0.25, grayscaling=False,
+                 count_threshold=0.5):
         super().__init__()
         self.M = M
         self.L = L
@@ -64,6 +65,11 @@ class CLAM(nn.Module):
         self.subtyping = subtyping
         self.grayscaling = grayscaling
         self.instance_loss_fn = instance_loss_fn if instance_loss_fn is not None else nn.CrossEntropyLoss()
+
+        # Globaler Zaehl-Threshold fuer count_positive_instances. Als Buffer
+        # registriert, damit ein auf dem Val-Split kalibrierter Wert im
+        # state_dict mitgespeichert und beim Laden wiederhergestellt wird.
+        self.register_buffer('count_threshold', torch.tensor(float(count_threshold)))
 
         # self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
         # # -- [ANPASSUNG 1] CNN-Backbone (identisch zu model.Attention) --------
@@ -209,13 +215,27 @@ class CLAM(nn.Module):
         error = 1. - Y_hat.view(-1).eq(Y).cpu().float().mean().item()
         return error, Y_hat
 
-    def count_positive_instances(self, X, threshold=0.5):
-        """Zaehlen ueber den Instanz-Klassifikator (direkter als Attention-Threshold)."""
+    def set_count_threshold(self, threshold):
+        """Hinterlege den globalen Zaehl-Threshold am Modell (z.B. nach der
+        Kalibrierung auf dem Val-Split). Landet ueber den Buffer im state_dict."""
+        self.count_threshold.fill_(float(threshold))
+
+    def count_positive_instances(self, X, threshold=None):
+        """Zaehlen ueber den Instanz-Klassifikator (direkter als Attention-Threshold).
+
+        Args:
+            X: Bag-Tensor.
+            threshold: Schwelle auf den Instanz-Wahrscheinlichkeiten. None nutzt
+                ``self.count_threshold``, also ggf. den auf Val kalibrierten Wert.
+        Returns:
+            (count, inst_probs). Verglichen wird mit '>', identisch zu
+            counting_scores_per_bag/calibrate_threshold.
+        """
         self.eval()
+        if threshold is None:
+            threshold = float(self.count_threshold)
         with torch.no_grad():
             x = X.squeeze(0)
-            K = x.shape[0]
-            threshold = 1/K
             # x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
             # H = self.feature_extractor_part1(x)
             # H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
