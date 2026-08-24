@@ -161,21 +161,18 @@ def build_arg_parser():
                         help='CLAM: zusaetzlicher Soft-Count (Summe der Instanz-Wahrscheinlichkeiten, bag-gegatet) in count_threshold_eval')
 
     # ── Ganzbild-Auswertung (CLAM) ────────────────────────────────────────────
-    parser.add_argument('--full_image_eval', type=str, default=None, metavar='DIR',
-                        help='CLAM: Verzeichnis mit vollen Bildern + Punkt-Annotationen fuer die Ganzbild-Auswertung')
+    parser.add_argument('--full_image_test', type=str, default=None, metavar='DIR',
+                        help='CLAM: Verzeichnis mit vollen Bildern + Punkt-Annotationen fuer die Ganzbild-Auswertung (Test)')
+    parser.add_argument('--full_image_cal', type=str, default=None, metavar='DIR',
+                            help='CLAM: Verzeichnis mit vollen Bildern + Punkt-Annotationen fuer die Ganzbild-Auswertung (Kalibrierung)')
     parser.add_argument('--full_image_only', action='store_true', default=False,
                         help='Nur Ganzbild-Auswertung mit --load_model: kein Dataloader, kein Training, kein Test')
-    parser.add_argument('--full_image_ids', nargs='+', type=str, default=None,
-                        help='IDs der auszuwertenden Bilder ohne Endung (default: alle im Verzeichnis)')
     parser.add_argument('--full_image_patch_size', type=int, default=128,
                         help='Kantenlaenge der Patches der Ganzbild-Auswertung (muss zur Bag-Erzeugung passen)')
     parser.add_argument('--full_image_ext', type=str, default='.JPG',
                         help='Dateiendung der vollen Bilder (default: .JPG)')
     parser.add_argument('--full_image_threshold', type=float, default=None,
                         help='Zaehl-Threshold der Ganzbild-Auswertung (default: kalibrierter Wert aus dem state_dict)')
-    parser.add_argument('--full_image_calibration', type=str, default='none',
-                        choices=['none', 'linear', 'isotonic'],
-                        help='Count-Kalibrierung fuer den Ganzbild-Plot (in-sample, nur deskriptiv)')
 
     # ── Data parameters ───────────────────────────────────────────────────────
     parser.add_argument('--dataset', type=str, default='mnist_bags', metavar='H5',
@@ -1258,43 +1255,69 @@ def run_full_image_eval(model, args):
         Der Ergebnis-DataFrame, oder None wenn nichts ausgewertet werden konnte.
     """
     if args.model != 'clam':
-        print("Warning: --full_image_eval ist nur fuer --model clam verfuegbar. Wird ignoriert.")
+        print("Warning: --full_image_test ist nur fuer --model clam verfuegbar. Wird ignoriert.")
         return None
+    test_ids = sorted(os.path.splitext(f)[0] for f in os.listdir(args.full_image_test) if f.endswith(args.full_image_ext))
+    if not test_ids:
+            print(f"Warning: keine {args.full_image_ext}-Bilder in {args.full_image_test}.")
+            return None
+    cal_ids = sorted(os.path.splitext(f)[0] for f in os.listdir(args.full_image_cal) if f.endswith(args.full_image_ext))
+    if not cal_ids:
+            print(f"Warning: keine {args.full_image_ext}-Bilder in {args.full_image_cal}.")
+            return None
+    
 
-    image_ids = args.full_image_ids
-    if not image_ids:
-        image_ids = sorted(os.path.splitext(f)[0] for f in os.listdir(args.full_image_eval)
-                           if f.endswith(args.full_image_ext))
-    if not image_ids:
-        print(f"Warning: keine {args.full_image_ext}-Bilder in {args.full_image_eval}.")
-        return None
-
-    print(f"\nStarting full image evaluation on {len(image_ids)} images...")
-    df = evaluate_image_set(model, image_ids, args.full_image_eval,
+    print(f"\nStarting full image evaluation on {len(cal_ids)} calibration and {len(test_ids)} test images...")
+    cal_df = evaluate_image_set(model, cal_ids, args.full_image_eval,
                             args.full_image_patch_size,
                             grayscale=not args.rgb,
                             threshold=args.full_image_threshold,
                             img_ext=args.full_image_ext)
 
-    metrics = {'full_image_n': float(len(df)),
-               'full_image_out_of_grid': float(df['out_of_grid'].sum())}
+    test_df = evaluate_image_set(model, test_ids, args.full_image_eval,
+                             args.full_image_patch_size,
+                             grayscale=not args.rgb,
+                             threshold=args.full_image_threshold,
+                             img_ext=args.full_image_ext)
+
+    df = pd.concat([cal_df, test_df], ignore_index=True)
+
+    metrics = {'full_image_n': float(len(cal_df)),
+               'full_image_out_of_grid': float(cal_df['out_of_grid'].sum()),
+               'full_image_n': float(len(test_df)),
+               'full_image_out_of_grid': float(test_df['out_of_grid'].sum())}
 
     # ── Bild-Level: Zaehlfehler fuer hard und soft count ──────────────────────
     for col in ('hard_count', 'soft_count'):
-        resid = df[col] - df['gt_count']
-        metrics[f'full_image_{col}_mae'] = float(resid.abs().mean())
-        metrics[f'full_image_{col}_rmse'] = float(np.sqrt((resid ** 2).mean()))
-        metrics[f'full_image_{col}_bias'] = float(resid.mean())
-        if len(df) >= 3 and df[col].nunique() > 1 and df['gt_count'].nunique() > 1:
-            metrics[f'full_image_{col}_spearman'] = float(stats.spearmanr(df[col], df['gt_count']).statistic)
-    metrics['full_image_count_accuracy'] = calculate_counting_metrics(
-        df['gt_count'], df['hard_count'])['counting_accuracy']
+        resid = cal_df[col] - cal_df['gt_count']
+        metrics[f'cal_{col}_mae'] = float(resid.abs().mean())
+        metrics[f'cal_{col}_rmse'] = float(np.sqrt((resid ** 2).mean()))
+        metrics[f'cal_{col}_bias'] = float(resid.mean())
+        if len(cal_df) >= 3 and cal_df[col].nunique() > 1 and cal_df['gt_count'].nunique() > 1:
+            metrics[f'cal_{col}_spearman'] = float(stats.spearmanr(cal_df[col], cal_df['gt_count']).statistic)
+    cal_metrics = calculate_counting_metrics(cal_df['gt_count'], cal_df['hard_count'])
+    metrics.update({f'cal_{k}': float(v) for k, v in cal_metrics.items()})
+
+    for col in ('hard_count', 'soft_count'):
+        resid = test_df[col] - test_df['gt_count']
+        metrics[f'test_{col}_mae'] = float(resid.abs().mean())
+        metrics[f'test_{col}_rmse'] = float(np.sqrt((resid ** 2).mean()))
+        metrics[f'test_{col}_bias'] = float(resid.mean())
+        if len(test_df) >= 3 and test_df[col].nunique() > 1 and test_df['gt_count'].nunique() > 1:
+            metrics[f'test_{col}_spearman'] = float(stats.spearmanr(test_df[col], test_df['gt_count']).statistic)
+    test_metrics = calculate_counting_metrics(test_df['gt_count'], test_df['hard_count'])
+    metrics.update({f'test_{k}': float(v) for k, v in test_metrics.items()})
 
     # ── Patch-Level: AUC ueber alle Bilder (points_per_patch liefert die Labels)
-    scores = np.concatenate(df['patch_signals'].to_list())
-    labels = (np.concatenate(df['points_per_patch'].to_list()) > 0).astype(int)
-    if labels.min() != labels.max():
-        metrics['full_image_patch_auc'] = float(roc_auc_score(labels, scores))
+    cal_scores = np.concatenate(cal_df['patch_signals'].to_list())
+    cal_labels = (np.concatenate(cal_df['points_per_patch'].to_list()) > 0).astype(int)
+    if cal_labels.min() != cal_labels.max():
+        metrics['full_image_patch_auc'] = float(roc_auc_score(cal_labels, cal_scores))
+
+    test_scores = np.concatenate(test_df['patch_signals'].to_list())
+    test_labels = (np.concatenate(test_df['points_per_patch'].to_list()) > 0).astype(int)
+    if test_labels.min() != test_labels.max():
+        metrics['full_image_patch_auc'] = float(roc_auc_score(test_labels, test_scores))
 
     # ── Kalibrierung und Plots ────────────────────────────────────────────────
     if len(df) < 3:
@@ -1302,19 +1325,21 @@ def run_full_image_eval(model, args):
     else:
         for count_col, frac_col in (('hard_count', 'hard_frac'), ('soft_count', 'soft_frac')):
             cal_fn = None
-            if args.full_image_calibration != 'none':
-                cal_fn = fit_calibration(df[count_col], df['gt_count'],
-                                         kind=args.full_image_calibration)
-                pred = np.asarray(cal_fn(df[count_col]), dtype=float).ravel()
-                metrics[f'full_image_{count_col}_cal_mae'] = float(np.abs(pred - df['gt_count']).mean())
+            for kind in ('linear', 'isotonic'):
+                cal_fn = fit_calibration(cal_df[count_col], cal_df['gt_count'],
+                                         kind=kind)
+                cal_pred = np.asarray(cal_fn(cal_df[count_col]), dtype=float).ravel()
+                metrics[f'cal_{count_col}_cal_mae'] = float(np.abs(cal_pred - cal_df['gt_count']).mean())
+                test_pred = np.asarray(cal_fn(test_df[count_col]), dtype=float).ravel()
+                metrics[f'test_{count_col}_cal_mae'] = float(np.abs(test_pred - test_df['gt_count']).mean())
                 if cal_fn.kind == 'linear':
-                    metrics[f'full_image_{count_col}_cal_slope'] = float(cal_fn.estimator.coef_[0])
-                    metrics[f'full_image_{count_col}_cal_intercept'] = float(cal_fn.estimator.intercept_)
-            fig = plot_pred_vs_gt(df, count_col=count_col, gt_col='gt_count',
-                                  cal_fn=cal_fn, frac_col=frac_col,
-                                  title=f"Full image counting - {count_col}")
-            mlflow.log_figure(fig, f"full_image_{count_col}.png")
-            plt.close(fig)
+                    metrics[f'cal_{count_col}_cal_slope'] = float(cal_fn.estimator.coef_[0])
+                    metrics[f'cal_{count_col}_cal_intercept'] = float(cal_fn.estimator.intercept_)
+                fig = plot_pred_vs_gt(test_df, count_col=count_col, gt_col='gt_count',
+                                    cal_fn=cal_fn, frac_col=frac_col,
+                                    title=f"{kind} - {count_col}")
+                mlflow.log_figure(fig, f"{kind}_{count_col}.png")
+                plt.close(fig)
 
     mlflow.log_metrics(metrics)
     for key, value in metrics.items():
