@@ -315,7 +315,7 @@ labelsep=space]{caption}
 
 			The momentary end point for attention mechanisms is the Transformer architecture \cite{vaswaniAttentionAllYou2017} which uses self-attention to model the dependencies between all 
 			elements of a sequence and completely dispenses with recurrence. Attention mechanisms were also established for convolutional networks to adaptively weight feature maps
-			\cite{huShuSqueezeandExcitationNetworks2019, wooCwooCBAMConvolutionalBlock2018,niuReviewAttentionMechanism2021}. For this work the structural aspects of attention mechanisms are decisive. 
+			\cite{huSqueezeandExcitationNetworks2019, wooCBAMConvolutionalBlock2018,niuReviewAttentionMechanism2021}. For this work the structural aspects of attention mechanisms are decisive. 
 			Attention calculates a normalised, learned weighting across a set of elements, thereby providing an aggregation operator whose weights can also be 
 			interpreted as a measure of each element's contribution. It is precisely this property that makes it suitable for multiple instance learning.\\
 		\subsection{Attention based MIL}\label{sec:2.3}
@@ -336,7 +336,7 @@ labelsep=space]{caption}
 				z = \sum^K_{k=1}a_kh_k, \quad a_k = \frac{exp\{w^Ttanh(Vh_k^T)\}}{\sum_{j=1}^Kexp\{w^Ttanh(Vh_j^T)\}},
 			\end{align*}
 			where $w$ and $V$ are trainable parameters. Since the weights are non-negative due to Softmax normalization and sum to one, the operator remains stable and permutation-invariatn across
-			varying bag sizes. \texttt{reason why the activation functions I tried do the same}
+			varying bag sizes. 
 			The attention weights can then be directly interpretetd as the input of each instance to the bag prediction, which lends the model interpretabilty missing from rigid pooling operators.\\
 
 			To kompensate the limited power of expression of the tangens hyperbolicus in approximatively linear behavior the authors also propose a gated variant, that introduces a multiplicative sigmoid branch:\\
@@ -512,6 +512,7 @@ labelsep=space]{caption}
 			- Modification were made to the backbone regarding its complexity adding GroupNorm (instead of BatchNorm) because of the limitation to one batch
 			- Third convolutional layer and dropout layer to incourage more learning\
 			- Tested were also different attention activation functions for better seperation of the positive and negative patches\
+			\texttt{reason why the activation functions I tried do the same}
 		\subsection{CLAM based implementation}
 			- 
 
