@@ -99,68 +99,82 @@ labelsep=space]{caption}
 	 
 	\section{Scientific Background}
 		\subsection{Wheat head detection and counting}
-			The grain yield of cereals can be described as the product of multiple area-based yield components - 
-			plant density, number of fertile ears per plant, grain count per ear and mass per corn\cite{guoAerialImageryAnalysis2018}.
-			Ear count per ground area plays a prominent role among the mentioned components being regarded as one of the 
-			central agronomic yield components for grain yield in grains \cite{fernandezWheatEarCounting2018} and 
+			The grain yield of cereals can be described as the product of multiple area-based yield components --- 
+			plant density, number of fertile ears per plant, grain count per ear and mass per grain \cite{guoAerialImageryAnalysis2018}.
+			Ear count per ground area plays a prominent role among the mentioned components, being regarded as one of the 
+			central agronomic yield components for grain yield in cereals \cite{fernandezWheatEarCounting2018} and 
 			the most important index on its own \cite{xiongTasselNetv2InfieldCounting2019}.
-			Accordingly, ear density is closely linked to yield-determining characteristics such as stand density 
-			and tillering \cite{madecEarDensityEstimation2019}.\\
+			Moreover, ear density is closely linked to yield-determining characteristics such as stand density 
+			and tillering \cite{madecEarDensityEstimation2019}.
 
-			Beyond the pure yield estimation ear count is a reocurring trait in plant breeding and phenotyping. 
-			The number of ears per ground area is part of the adaptive traits that are of interest in agronomy 
+			Beyond pure yield estimation, ear count is a recurring trait in plant breeding and phenotyping. 
+			The number of ears per ground area is one of the adaptive traits that are of interest in agronomy 
 			and breeding \cite{guoAerialImageryAnalysis2018, madecEarDensityEstimation2019}.
-			The ear density allows the characterisation the tillering capacity of genotypes, as determined by the tillering coefficient, 
+			Ear density allows the characterisation of the tillering capacity of genotypes, as determined by the tillering coefficient, 
 			which is calculated as the ratio of the number of ears per unit area to the plant density.
-			Counting and density estimation are main building blocks for high throughput phenotyping because of the quantitative nature of many phenotypical traits.
-			Plant density does therefore recieve increasing attention in breeding programs\cite{jinEstimatesPlantDensity2017a, luCaoTasselNetV2F2020} 
-			as well as count and localization tasks which are of similar importance for agricultural production \cite{karamiAutomaticPlantCounting2020}.\\
+			Counting and density estimation are core building blocks for high-throughput phenotyping because of the quantitative nature of many phenotypical traits.
+			Plant density therefore recieves increasing attention in breeding programs\cite{jinEstimatesPlantDensity2017a, luCaoTasselNetV2F2020} 
+			as do count and localization tasks, which are of similar importance for agricultural production \cite{karamiAutomaticPlantCounting2020}.
 
-			Recent papers showed that the reliable extraction of these traits or features from image data is possible. \cite{madecEarDensityEstimation2019}
-			used high resolution RGB images to determine ear density, achieving a similarly high hertiabilty ($H^2\approx 85\%$) as manual counting in the field. 
-			This suggests a possible replacement of manual methods by automatic ones. The needed spacial resolution of 0,3 mm is achievable with UAV plattforms and 
-			is suitable for the phentyping of larger experimental sites. Practical use cases for stock counting can be found during every stage of agricultural production starting 
-			at the seeding up to the yield estimatation \cite{luCaoTasselNetV2F2020}. They can deliver early information about the need of potential reseeding 
-			and an estimate for yield potential \cite{khakiHighthroughputImagebasedPlant2022}.\\
+			Recent papers have shown that the reliable extraction of these traits or features from image data is possible. \textcite{madecEarDensityEstimation2019}
+			used high-resolution RGB images to determine ear density, achieving a similarly high heritabilty ($H^2\approx 85\%$), comparable to manual counting in the field. 
+			This suggests a possible replacement of manual methods by automatic ones. The required spatial resolution of 0.3 mm is achievable with UAV platforms and 
+			is suitable for the phenotyping of larger experimental sites. Practical use cases for stand counting can be found during every stage of agricultural production, 
+			from seeding to the yield estimation \cite{luCaoTasselNetV2F2020}. These methods can deliver early information about the need for potential reseeding 
+			and an estimate of yield potential \cite{khakiHighthroughputImagebasedPlant2022}.
 
-			The major bottle neck lies within the feature collection. Manual counting in the field is universally accepted as laborious, subjective, 
-			prone to error and inefficient \cite{madecEarDensityEstimation2019,luCaoTasselNetV2F2020}, especially for when the data has to be collected 
-			over a lot of parcells \cite{guoAerialImageryAnalysis2018}. Exaclty this effort gives motivation to build automated, image-based ear 
-			counting methods which come with their own methodical difficulties.\\
+			The major bottleneck lies in feature collection. Manual counting in the field is widely regarded as laborious, subjective, 
+			prone to error and inefficient \cite{madecEarDensityEstimation2019,luCaoTasselNetV2F2020}, especially when the data has to be collected 
+			over many of parcels \cite{guoAerialImageryAnalysis2018}. Exactly this effort motivates the devepopment of automated, image-based 
+			ear-counting methods, which come with their own methodological difficulties.
+
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.5\textwidth]{example-image}
+				\caption{Specturm of anntotation - beispielhafte Darstellung der Annotationsarten an Bildern zumVergleich}
+				\label{fig:annot_spek}
+			\end{figure}
 
 		\subsection{Difficulty of annotations}
-			The difficulty of the grain ear counting is difficult for a multitude of partly related reasons. At the center is the stand density in general. 
-			Compared to other grains cereals are seeded denser with a density of 200 to 600 ears per square meter leading to only partly visible ears in image patches \cite{xiongTasselNetv2InfieldCounting2019}.
-			These dense scenes are defined by strong occlusion and small object sizes leading to a diffult analysis. Occlusions stem from two classes - 
-			occlusion by objects not part of the scene and the mutual occlusion of similar objects. The latter is the core of problem \cite{zhangApplicationsDeepLearning2020}. 
-			In extremly dense tillering is the overlap so strong that even experienced people need to count mulitple times to achieve a reliable result \cite{xiongTasselNetv2InfieldCounting2019}. 
-			Depending on the occlusion single ears can be hiden by leaves or neighboring ears or multiple ears can visually merge into one \cite{guoAerialImageryAnalysis2018}.\\
+			Grain ear counting is difficult for a multitude of partly related reasons. At its core lies the overall stand density. 
+			Compared to other crops, cereals are sown more densly, with a density of 200 to 600 ears per square metre, leading to only partly visible ears in image patches \cite{xiongTasselNetv2InfieldCounting2019}.
+			These dense scenes are charaterised by strong occlusion and small object sizes leading to a difficult analysis. Occlusions stem from two sources: 
+			occlusion by objects that are not part of the scene and the mutual occlusion of similar objects. The latter is the core of the problem \cite{zhangApplicationsDeepLearning2020}. 
+			In extremly dense tillering, the overlap is so strong that even experienced observers need to count multiple times to achieve a reliable result \cite{xiongTasselNetv2InfieldCounting2019}. 
+			Depending on the occlusion, single ears can be hidden by leaves or neighbouring ears or multiple ears can visually merge into one \cite{guoAerialImageryAnalysis2018}.
 
-			This overlap has a direct impact on the choice of method. Detection-based approaches typically rely, ultimately, on 
+			This overlap has a direct impact on the choice of method. Detection-based approaches typically rely on 
  			non-maximum suppression, which struggles to separate objects that overlap heavily \cite{xiongTasselNetv2InfieldCounting2019}; as an alternative, regression-based counting 
 			methods have become established for dense, highly overlapping scenes \cite{madecEarDensityEstimation2019}. Nevertheless, regression is not without its limitations either: 
-			In cases of severe overlap and image blurring, significant underestimations occur, and the ears of maize then become almost impossible to distinguish, even for human experts 
+			in cases of severe overlap and image blurring, significant underestimations occur, and the grain ears then become almost impossible to distinguish, even for human experts 
  			\cite{xiongTasselNetv2InfieldCounting2019}.\\
 
 			This is compounded by the high variability of the target object. The colour, size and shape of wheat ears vary greatly and unevenly across the different stages of development, 
 			and perspective distortions caused by the angle of capture further exacerbate the differences in size \cite{xiongTasselNetv2InfieldCounting2019}. 
-			In breeding populations, this variability is compounded by differences between genotypes, growth stages and the origin of the ear — main shoot or tillering shoot — 
-			which leads to significant differences in morphological characteristics \cite{guoAerialImageryAnalysis2018}. The growth stage influences countability in two ways: in later stages, the 
+			In breeding populations, this variability is amplified by differences between genotypes, growth stages and the origin of the ear — main shoot or tillering shoot — 
+			which produces differences in morphology \cite{guoAerialImageryAnalysis2018}. The growth stage influences countability in two ways: in later stages, the 
 			increasing leaf mass leads to greater overlap between neighbouring plants and makes their classification more difficult \cite{jinEstimatesPlantDensity2017a}, which is why high counting accuracies 
 			are achieved primarily in early stages where there is no overlap and no weeds \cite{garcia-martinezDigitalCountCorn2020}.\\
 
 			In addition to the object itself, the imaging conditions also pose challenges. Changing light conditions during a single flight, a complex background, 
 			and the aforementioned variations in shape and colour are among the key difficulties faced by image-based solutions under real-world field conditions \cite{guoAerialImageryAnalysis2018}. 
-			Flight altitude also has a direct impact: as altitude increases, counting accuracy decreases — from around 96 \% at 40 m to approximately 76 \% at 60 m \cite{neupaneDeepLearningBased2019} —, 
-			and a spatial resolution better than approximately 0.4 mm is a prerequisite for a reliable density estimate. 
+			Flight altitude also has a direct impact: as altitude increases, counting accuracy decreases from around 96 \% at 40 m to approximately 76 \% at 60 m \cite{neupaneDeepLearningBased2019}.
+			In addition, a spatial resolution better than approximately 0.4 mm is a prerequisite for a reliable density estimate. 
 			The timing of the acquisition can also be chosen to minimise overlaps \cite{jinEstimatesPlantDensity2017a}.
 
 			However, the key challenge in this work concerns annotation. Traditional detection-based methods require instance-specific labels — such as bounding boxes — 
-			which are hardly feasible to generate given the typical number of objects in wheat images: A single image may contain more than 10,000 ears of wheat, 
-			which makes the annotation of bounding boxes nearly impossible \cite{xiongTasselNetv2InfieldCounting2019}. Even where deep learning models in principle facilitate counting, 
+			which are hardly feasible to generate given the typical number of objects in wheat images: a single image may contain more than 10,000 ears of wheat, 
+			which makes the annotation of bounding boxes nearly impossible \cite{xiongTasselNetv2InfieldCounting2019}. Even where deep-learning models in principle facilitate counting, 
 			the generation of training data remains very labour-intensive \cite{guoAerialImageryAnalysis2018}. This is precisely where the approach pursued in this work comes in: 
-			By using only bag-level count labels instead of instance-level annotations, the weakly supervised counting approach using multiple instance learning circumvents 
+			by using only bag-level count labels instead of instance-level annotations, the weakly supervised multiple instance learning approach circumvents 
 			the prohibitive annotation effort whilst remaining robust to the occlusion and density issues described. 
+
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.5\textwidth]{example-image}
+				\caption{Examples for counting difficulties from used datasets}
+				\label{fig:count_diff_ex}
+			\end{figure}
 
 			% - Manual and automated counting face similar problems\
 			% - In both cases all heads need to be detected which is made difficult by the dense standing of the plants
@@ -168,133 +182,121 @@ labelsep=space]{caption}
 			% - Manual counting is very time consuming and expensive\
 			% - Automated counting is very dependent on the quality and quantity of the annotations\
 		\subsection{Fully supervised approaches}
-			Fully supervised counting of plant organs can be divided into four methodological catgories which differentiate in annotation efforts, output representation and robustness to occlusion.
-			The first is the most widespread family in the cereal domeina and uses detection-based methods for counting. Objects are located by bounding boxes and the count is a byproduct of the detection.
-			Madec et al. \cite{madecEarDensityEstimation2019} compared the Faster-RCNN detector with the TasselNet regression network for ear density estimation 
-			from high-resolution RGB nadir images and found that, under calibrated conditions, both approaches achieve a relative root-mean-square error of around six per cent, 
-			although Faster-RCNN remained more robust at advanced growth stages because the ears and background appear differently as the plants mature. 
-			For their Faster-RCNN model, Madec et al. report an average precision of 0.85, a relative RMSE of 5.3 per cent and a coefficient of determination of 0.91.
-			With the publication of the Global Wheat Head Detection dataset by David et al. (2020) \cite{david}, detection-based wheat head recognition has been standardised. In their pulication from
-			In 2023 \cite{david2023}, they analysed the winning models from the 2020 and 2021 Global Wheat Challenges — predominantly EfficientDet and YOLO variants - and report that the 
+			Fully supervised counting of plant organs can be divided into four methodological categories, which differ in annotation effort, output representation and robustness to occlusion.
+			The first is the most widely spread family in the cereal domain and uses detection-based methods for counting. Objects are located by bounding boxes and the count is a by-product of detection.
+			\textcite{madecEarDensityEstimation2019} compared the Faster-R-CNN detector with the TasselNet regression network for ear density estimation 
+			from high-resolution RGB nadir images and found that, under calibrated conditions, both approaches achieved a relative root-mean-square error of around six per cent, 
+			although Faster-R-CNN remained more robust at advanced growth stages because the ears and background appear differently as the plants mature. 
+			For their Faster-R-CNN model, Madec et al. reported an average precision of 0.85, a relative RMSE of 5.3 per cent and a coefficient of determination of 0.91.
+			With the publication of the Global Wheat Head Detection dataset by \textcite{davidGlobalWheatHead2020}, detection-based wheat head recognition was standardised. In their 2023 pulication,
+			they analysed the winning models from the 2020 and 2021 Global Wheat Challenges \cite{davidGlobalWheatHead2020,davidGlobalWheatHead2021} --- predominantly EfficientDet and YOLO variants --- and reported that the 
 			winning solutions achieved an average domain accuracy of around 0.7, whilst the resulting estimate of the number of ears across all test data achieved a coefficient of determination of 
-			$R^2$ = 0.814 with a relative RMSE of 0.185. The authors themselves emphasise that this counting performance falls short of that achieved in specialised studies such as Madec et al. 
-			\cite{madecEarDensityEstimation2019} (rRMSE = 0.06) or Sadeghi-Tehran et al. \cite{sadeghi} (rRMSE = 0.11).
-			More recent wheat-specific detectors are pushing these figures even further: YOLOv7-MA \cite{meng2023} achieves an average precision of 93.86 per cent on GWHD 2021 at 
-			35.93 frames per second, whilst the drone-optimised YOLOv8-FDA \cite{lin2025}, optimised for drones, combines an mAP@0.5 of 84.9 per cent with a model of just 2.96 megabytes 
+			$R^2$ = 0.814 with a relative RMSE of 0.185 \cite{davidGlobalWheatHead2023}. The authors themselves emphasise that this counting performance falls short of that achieved in specialised studies such as  
+			\textcite{madecEarDensityEstimation2019} (rRMSE = 0.06) and \textcite{sadeghi-tehranDeepCountInFieldAutomatic2019c} (rRMSE = 0.11).
+			More recent wheat-specific detectors are pushing these figures even further: YOLOv7-MA \cite{mengYOLOv7MAImprovedYOLOv7Based2023} achieves an average precision of 93.86 per cent on GWHD 2021 at 
+			35.93 frames per second, whilst the drone-optimised YOLOv8-FDA \cite{linYOLOv8FDALightweightWheat2025} combines an mAP@0.5 of 84.9 per cent with a model size of just 2.96 MB 
 			and a counting accuracy of over 97.5 per cent for cross-row segmentation. The advantage of detection-based methods lies in the additional localisation of each object; 
-			their disadvantage is the high annotation effort required for bounding boxes, as well as the decreasing accuracy in the case of dense, overlapping ears of grain.\\
+			their disadvantage is the high annotation effort required for bounding boxes, as well as the decreasing accuracy in the case of dense, overlapping grain ears.
 
-			The second family, density-map-based regression, does not detect individual instances. Lempitsky and Zisserman (2010) first formulated counting as an integral over a density 
+			The second family, density-map-based regression, does not detect individual instances. \textcite{lempitskyLearningCountObjects2010} first formulated counting as an integral over a density 
 			map learnt from point annotations and introduced the MESA loss function, which can be efficiently computed using a maximum subarray algorithm. This paradigm was further developed 
-			in crowd counting by MCNN (Zhang et al. 2016) and, in particular, CSRNet (Li et al. 2018); the latter achieves a mean absolute error of 68.2 on ShanghaiTech Part A using dilated 
+			in crowd counting by MCNN \cite{zhangSingleImageCrowdCounting2016} and, in particular, CSRNet \cite{liCSRNetDilatedConvolutional2018}; the latter achieves a mean absolute error of 68.2 on ShanghaiTech Part A using dilated 
 			convolutions and is frequently used as a baseline for wheat ear density maps. In agricultural image processing, the TasselNet family extended this concept to plant organs: 
-			whilst TasselNet (Lu et al. 2017) was developed for maize tassels, Xiong et al. (2019) extended it to wheat ears with TasselNetv2 using context-augmented local regression, 
+			whilst TasselNet \cite{luTasselNetCountingMaize2017} was developed for maize tassels, \textcite{xiongTasselNetv2InfieldCounting2019} extended it to wheat ears with TasselNetv2 using context-augmented local regression, 
 			achieving a counting accuracy of 91.01 per cent at 13.82 frames per second on the specially collected WSC dataset. Density mapping methods require only point annotations and 
-			are more robust than detectors in conditions of high object density; however, they do not provide explicit object localisation.\\
+			are more robust than detectors in conditions of high object density; however, they do not provide explicit object localisation.
 
-			The third family comprises segmentation-based approaches in which ears of maize are segmented on a pixel-by-pixel basis and subsequently counted. 
-			SpikeSegNet (Misra et al. 2020) uses an encoder-decoder network with a Hourglass architecture for this purpose, whilst Hasan et al. (2018) 
-			employed region-based CNNs for ear detection and analysis under various fertilisation levels. Segmentation captures the object’s shape precisely, 
-			but requires pixel-accurate masks and is therefore particularly labour-intensive in terms of annotation. \\
-			Finally, the fourth family – direct count regression at the image level – dispenses entirely with spatial outputs: Ribera et al. (2017) regressed the number 
+			The third family comprises segmentation-based approaches in which wheat ears are segmented on a pixel-by-pixel basis and subsequently counted.
+			SpikeSegNet \cite{misraSpikeSegNetaDeepLearning2020} uses an encoder-decoder network with an Hourglass architecture for this purpose, whilst \textcite{hasanDetectionAnalysisWheat2018} 
+			employed region-based CNNs for ear detection and analysis under various fertilisation levels. Segmentation captures the object's shape precisely, 
+			but requires pixel-accurate masks and is therefore particularly labour-intensive in terms of annotation. 
+
+			Finally, the fourth family - direct count regression at the image level - dispenses entirely with spatial outputs: \textcite{riberaCountingPlantsUsing2017} regressed the number 
 			of plants directly from orthorectified field image sections and achieved a mean absolute percentage error of 6.7 per cent using an Inception-v3 architecture, 
-			and WheatLFANet (Ye et al. 2023) adopts a comparable global regression approach with high real-time performance. An instructive special case is WheatNet (Khaki et al. 2022), 
+			and WheatLFANet \cite{yeWheatLFANetInfieldDetection2023} adopts a comparable global regression approach with high real-time performance. An instructive special case is WheatNet \cite{khakiHighthroughputImagebasedPlant2022}, 
 			which combines a truncated MobileNetV2 with a density and a localisation branch, requiring only point annotations; 
 			this places it methodologically between density regression and weak supervision. Overall, there is a trade-off between annotation effort and the information content of the output, 
 			which underpins the motivation for weakly supervised methods. However, the figures reported are not directly comparable across studies, as they are based on different datasets, 
 			splits and metrics.
-			% % - Overview of the different approaches\
-			% % - Detection based approaches\
-			% % 	- GWHD-Challenge\
-			% % 	- YOLO-based Methods
-			% % - Density based approaches\
+
 		\subsection{Weakly supervised concept}
-			Weak supervision is a machine learning paradigm that allows models to be trained with limited or imprecise labeled data. For the context of counting grain ears,
-			this means a spectrum of decreasing strenght of annotation: from point annotaions with jsut one point per object, over image or bag lavel count labels that only
-			give the total number of objects in an image, to only image level class labels that only indicate the presence or absence of objects.
-			The moce from bounding boxes to point annotations was formulated by Ribera et al. (2019)\cite{ribera2019} with a weighted Hausdorrf distance, a loss function that
-			estimates object positions in every fully convolutional network without the need for bounding boxes, region proposals or a specification of the maximal obejct count.
-			Song et al. (2021) \cite{song2021} improved on that concept with their P2PNet, which directly predicts object positions as point proposals and uses an hungarian matching 
+			Weak supervision is a machine learning paradigm that allows models to be trained with limited or imprecise labelled data. In the context of counting grain ears,
+			this means a spectrum of decreasing strength of annotation: from point annotations with just one point per object, through over image or bag-level count labels that only
+			give the total number of objects in an image, to only image-level class labels that only indicate the presence or absence of objects.
+			The move from bounding boxes to point annotations was formulated by \cite{riberaLocatingObjectsBounding2019} with a weighted Hausdorrf distance, a loss function that
+			estimates object positions within any fully convolutional network without the need for bounding boxes, region proposals or a specification of the maximal object count.
+			\textcite{songRethinkingCountingLocalization2021} improved on that concept with their P2PNet, which directly predicts object positions as point proposals and uses an hungarian matching 
 			to set optimal training objectives. On ShanghaiTech Part A, they achieve a mean absolute error of 51.96. These methods significantly reduce the annotation workload, 
-			but still require spatially localised point annotations.\\
+			but still require spatially localised point annotations.
 
 			An even weaker form of supervision is provided by Multiple Instance Learning (MIL), which forms the core of this thesis. In MIL an object is viewed as a
-			bag of instances and only this bag -- not the individual instances -- recieves a label. Ilse et al. (2018) \cite{ilse2018} introduced a permutation invariant Attention-
-			Pooling-Operator, with Attention-based deep MIL, that aggregates weighted instances embeddings to a bag embedding and makes them interpretable through the attention
-			weights. Tested on two real histopathology datasets they achieve test AUCs of up to 0.968. Since then there have been several extensions and improvements to thsi architecture.
-			One of them is the work of Lu et al. (2021) \cite{lu} where they extended the principle with CLAM, a clustering-constrained Attention MIL. It combines Attention to identify diagnostically
-			diagnostically important subregions with an instance-level-clustering for a refined feature space using only slide-level labels. For the subtyping of renal cell carcinoma, 
-			they report a macro-averaged AUC of 0.973. Both methods were developed for classification rather than for counting –—their application to bag-level count labels is a topic that has only recently emerged; 
-			it is discussed in computer vision under terms such as ‘count-based multiple instance learning’ and has been tested there, for example, in cell counting, 
-			but has not yet found any application in agricultural image processing.\\
+			bag of instances and only this bag --- not the individual instances --- receives a label. \textcite{ilseAttentionbasedDeepMultiple2018} introduced a permutationinvariant attention-
+			poolingoperator that aggregates weighted instance embeddings into a bag embedding and makes the model interpretable through the attention
+			weights. Tested on two real histopathology datasets, they achieve test AUCs of up to 0.968. Since then, there have been several extensions and improvements to this architecture.
+			One of them is the work of \textcite{luDataEfficientWeakly2020}, in which they extended the principle with CLAM, a clustering-constrained Attention MIL. It combines attention to identify diagnostically
+			important subregions with instance-level clustering for a refined feature space, using only slide-level labels. For the subtyping of renal cell carcinoma, 
+			they report a macro-averaged AUC of 0.973. Both methods were developed for classification rather than for counting --- their application to 
+			bag-level count labels %Überlegung weil ich keine count labels nutze
+			is a topic that has only recently emerged; 
+			it is discussed in computer vision under terms such as count-based multiple instance learning and has been tested there, for example, in cell counting, 
+			but has not yet found application in agricultural image processing.
 
-			In agricultural science, there have so far been only a few weakly supervised counting approaches, and none of them utilise multiple instance learning with bag-level count labels or just bag labels.
-			Ghosal et al. (2019)\cite{ghosal2019} developed an active-learning-inspired framework for counting sorghum ears from drone images, in which a semi-trained CNN generates 
+			In agricultural science, there have so far been only a few weakly supervised counting approaches, and none of them utilise multiple instance learning with bag-level count labels or bag-level labels alone.
+			\textcite{ghosalWeaklySupervisedDeep2019} developed an active-learning-inspired framework for counting sorghum ears from drone images, in which a semi-trained CNN generates 
 			synthetic annotations that are merely corrected by humans. This reduced the annotation time per image from approximately 720 to 180 seconds, with a 
-			determination coefficient of $R^2$ = 0.88 between machine and manual counting. However, this work is detection-based and utilises point or box annotations, 
-			rather than bag-level counts. The methodology closest to that of the present work is that of Wang et al. (2025), who employ attention-weighted multiple 
-			instance learning for county-wide maize yield prediction: Here, a county constitutes the ‘bag’ and individual satellite pixels constitute the ‘instances’, 
-			with the attention mechanism mitigating the problem of mixed pixels; in the best year (2022), a determination coefficient of $R^2$ = 0.84 is achieved 
-			with an RMSE of 0.83. This approach also differs fundamentally from the thesis, as it performs a continuous yield regression on satellite pixels 
+			coefficient of determination of $R^2 = 0.88$ between machine and manual counting. However, this work is detection-based and utilises point or box annotations, 
+			rather than bag-level labels. The methodology closest to that of the present work is that of \cite{wangLearningCountyPixels2025a}, who employ attention-weighted multiple 
+			instance learning for county-wide maize yield prediction: here, a county constitutes the 'bag' and individual satellite pixels constitute the 'instances', 
+			with the attention mechanism mitigating the problem of mixed pixels; in the best year (2022), a coefficient of determination of $R^2 = 0.84$ is achieved 
+			with an RMSE of 0.83. This approach also differs fundamentally from that of the present work, as it performs a continuous yield regression on satellite pixels 
 			rather than counting plants from drone image patches. A systematic review as of August 2026 thus confirms the central research gap addressed by 
 			this thesis: no published work was found that combines Attention-MIL or CLAM with drone image patches and bag-level labels for wheat ear counting. 
 			This thesis therefore addresses a genuine, as yet unexplored niche at the interface between weakly supervised multiple instance learning and 
 			agricultural organ counting. The performance figures reported in the cited works are not directly comparable due to differences in tasks, 
-			datasets and metrics, and are provided solely for the purpose of contextualisation.\\
-	
+			datasets and metrics, and are provided solely for the purpose of contextualisation.
 
-			
-			- Conceptual overview of weakly supervised learning using MIL\
-			- Cheaper labeling for bags instead of instances\
-			- What is MIL normally used for and how could it translate to this problem\
-		\subsection{Related work for MIL}
-			- Overview of different MIL couning approaches\
-			- Ilse et al.\
-			- Extensions of Ilse et al.\
-			- Wang et al.\
-			- Adelipour et al.\
-			- Ghosal et al.\
-		\subsection{Gap in the research}
-			The gap in the research which I hoped to fill in the thesis is the fully unsupervised counting of grain ears on UAV imagery using only bag level 
-			annotations for a MIL method. This kind of approach was has, as far as this research goes, not been tried or used successfully. The proposed method 
-			combines AttentionMIL and expanded CLAM model archtiectures with UAV images and bag level labels to count wheat heads wihtout the use of instance level 
-			annotations, with the goal to replace manual annotations with an automatic one.
-			%- In the reviewed literature, no method was found that uses MIL for counting wheat heads without using any form of instance level annotations\
-			%- The proposed method combines AttentionMIL/CLAM with drone images adn bag levle labels to count wheat heads without any instance level annotaions\
 	\section{Fundamentals}
 		\subsection{Multiple Instance Learning}
 			Multiple Instance Learning (MIL) is a machine learning paradigm that allows models to be trained with limited or imprecise labeled data. Instead of an assigned
 			label to each individual instance, groups of instances get one collective label. These groups are called bags and are defined as $X = {x_1,...,x_K}$ were X is the 
 			bag of size K and $x_k$ are feature vectors of instances. Only the bag label $Y$ is observable while the instance labels $y_k$ are hidden. 
-			The bag label is defined as $Y = max(y_1,...,y_K)$ meaning that a bag is positive if at least one instance is positive and negative if all instances are negative \cite{dietterich1997}\\
+			The bag label is defined as $Y = max(y_1,...,y_K)$ meaning that a bag is positive if at least one instance is positive and negative if all instances are negative \cite{dietterichSolvingMultipleInstance1997}.
 
-			This standardized assumption is not broad enough for some applications because it derives the bag label based a single instance. Therefore, Weidemann er al. (2003) \cite{wiedemann2003} 
+			This standardized assumption is not broad enough for some applications because it derives the bag label based a single instance. Therefore, \cite{weidmannTwoLevelLearningMethod2003} 
 			generalized the assumption to a hierachie of three assumptions. Firstly, the presence-based assumptionfollows the standardized assumption only expecting the presence of instances of every
 			relevant concept. Secondly, the threshold-based assumption assumes a positive bag when the number of positive instances exceeds a minimum. 
 			Finally, the count-based assumption stipulates both a minimum and a maximum number, and thus presupposes that it is not mere presence, but the number of instances belonging to the concept, 
 			that carries the information determining the label. The counting solution in this thesis explicitly relies soely on the standardized assumption, as the goal is to see what the maximum 
-			couting performance is that can be achieved with minimal annotation effort.\\
+			couting performance is that can be achieved with minimal annotation effort.
 
-			The other decision of importance when solving a MIL problem is how the discriminative information is modelled and aggregated. For the modelling Amores (2013) \cite{amores2013}
+			The other decision of importance when solving a MIL problem is how the discriminative information is modelled and aggregated. For the modelling \cite{amoresMultipleInstanceClassification2013}
 			distinguishes here between an Instance Space paradigm, where a classifier is trained on the instance level whose outputs are aggregated to a bag level prediciton, and
 			an Embedded Space paradigm, where a bag is mapped to a single feature vector of fixed dimensions and used to train a standard classifier.
 			The former assumes that the relevant information can be traced back to individual instances, whilst the latter shift it to the aggregated bag representation.
 			This distinction is important for the following sections because Attention-based MIL operates on the embedding level while CLAM introduces an additional branch on instance level.
-			The classical MIL literature has produced a range of methods for both paradigms, including Diverse Density and its extension EM-DD, distance-based 
-			approaches such as Citation-kNN, as well as the maximum-margin formulations mi-SVM and MI-SVM 
-			(Maron and Lozano-Pérez 1998; Wang and Zucker 2000; Zhang and Goldman 2001; Andrews et al. 2003).\\
+			The classical MIL literature has produced a range of methods for both paradigms. 
+			%including Diverse Density and its extension EM-DD, distance-based 
+			%approaches such as Citation-kNN, as well as the maximum-margin formulations mi-SVM and MI-SVM 
+			%(Maron and Lozano-Pérez 1998; Wang and Zucker 2000; Zhang and Goldman 2001; Andrews et al. 2003).\\
 
 			With the emergence of deep neural networks, the focus shifted from hand-designed distance metrics to learned representations. A crucial factor here is 
 			the choice of aggregation operator, which combines the instance representations into a bag representation and is commonly referred to as MIL pooling. 
 			Common operators include the maximum operator—which can be interpreted as a direct implementation of the standard assumption—the mean operator, 
-			and probabilistic variants such as ‘noisy-or’ (Maron and Lozano-Pérez 1998) and ‘noisy-and’ (Kraus et al. 2016). Wang et al. (2018) demonstrate empirically 
+			and probabilistic variants such as \textit{noisy-or} \cite{maronFrameworkMultipleInstanceLearning1997} and \textit{noisy-and} \cite{krausClassifyingSegmentingMicroscopy2016}. \cite{wangRevisitingMultipleInstance2018} demonstrate empirically 
 			that embedded-space approaches for bag classification are superior to instance-space approaches. However, what all the operators mentioned have in common is 
 			that they are fixed and contain no learnable parameters, meaning they cannot adapt to the structure of the task in question. The solution to this problem 
 			is provided by attention based pooling \ref{sec:2.3}.
 
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.5\textwidth]{example-image}
+				\caption{Example of MIL problem from used datasets}
+				\label{fig:mil_ex}
+			\end{figure}
+
 		\subsection{Attention}
 			Before diving into the specifics of Attention based pooling it is importatn to understand the general concept of Attention.
-			The Attention mechanism was first introduced by Bahdanau et al. (2015) \cite{bahdanau2015} as an answer to a structural 
+			The Attention mechanism was first introduced by \cite{bahdanauNeuralMachineTranslation2016} as an answer to a structural 
 			weakness of the Encoder-Decoder architecture in machine translation. They identified hard, length indenpendent context vector into which the encoder needs to compress
 			the whole input sequence as the bottleneck. Their solution was to allow the model to self sufficently weight the importance of the different parts of the input for every output step.
 			Weighting is carried out using an alignment model trained in conjunction with the overall system, the outputs of which are normalised using a softmax function:\\
@@ -305,31 +307,31 @@ labelsep=space]{caption}
 			the encoder at time step $j$. Because $a$ is implemented as a feedforward network, this is referred to as additive attention. The resulting context 
 			vector is a convex combination of the encoder states, which means that the mechanism remains fully differentiable and can be learnt via backpropagation.\\
 
-			Luong et al. (2015) \cite{luong2015} furthered the approach by introducing multiplicative or Dot-Product Attention, which is more computationally efficient.
+			\cite{luongEffectiveApproachesAttentionbased2015} furthered the approach by introducing multiplicative or Dot-Product Attention, which is more computationally efficient.
 			At the same time, they distinguished between global attention and local attention, where the former looks at all input positions while the latter only looks at a subset.
-			Another fundamental differenziation comes from Xu et al. (2015) \cite{xu2015} who introduced the concept of soft and hard attention. 
+			Another fundamental differenziation comes from \cite{xuShowAttendTell2016} who introduced the concept of soft and hard attention. 
 			Soft attention is fully differentiable and the weights are calculated deterministically, while hard attention stochasically samples a single input region and is 
 			dependen on reinforcement learning for training. In this thesis only soft attention is relevant bacause it allows end-to-end backpropagation.\\
 
-			The momentary end point for attention mechanisms is the Transformer architecture \cite{Vaswani2017} which uses self-attention to model the dependencies between all 
-			elements of a sequence and completely dispenses with recurrence. Attention mechanisms were also established for convolutional networks to adaptively weight feature maps.
-			\cite{hu2018, woo2018, niu2021}. For this work the structural aspects of attention mechanisms are decisive. 
+			The momentary end point for attention mechanisms is the Transformer architecture \cite{vaswaniAttentionAllYou2017} which uses self-attention to model the dependencies between all 
+			elements of a sequence and completely dispenses with recurrence. Attention mechanisms were also established for convolutional networks to adaptively weight feature maps
+			\cite{huShuSqueezeandExcitationNetworks2019, wooCwooCBAMConvolutionalBlock2018,niuReviewAttentionMechanism2021}. For this work the structural aspects of attention mechanisms are decisive. 
 			Attention calculates a normalised, learned weighting across a set of elements, thereby providing an aggregation operator whose weights can also be 
-			interpreted as a measure of each element’s contribution. It is precisely this property that makes it suitable for multiple instance learning.\\
+			interpreted as a measure of each element's contribution. It is precisely this property that makes it suitable for multiple instance learning.\\
 		\subsection{Attention based MIL}\label{sec:2.3}
 			The MIL pooling operators mentioned in \ref{sec:2.1} have one shared weakness: the are fixed and do not include any trainable parameters, making them 
-			unable to adapt to the structure of the current task. Ilse et al. (2018) \cite{ilse2018} therefore propose to model the aggregation as an attention 
+			unable to adapt to the structure of the current task. \cite{ilseAttentionbasedDeepMultiple2018} therefore propose to model the aggregation as an attention 
 			mechanism. They describe their input as "a neural network-based permutation-invariant aggregation opaerator that corresponds to the attention mechanism" 
-			and highlight that its application "provides insight into the contirbution of each instance to the bag label" \cite{ilse2018}. 
+			and highlight that its application "provides insight into the contirbution of each instance to the bag label" \cite{ilseAttentionbasedDeepMultiple2018}. 
 			A MIL-modell needs to be permutation invariant because no assumption about the order or dependency of instances in a bag can 
 			be made.\\\
 
 			The authors split the model into three steps: a transformation $f$ of the instances into representations $h_k$, a permutation invariant aggregation $\sigma$ to a bag representation and 
 			a subsequent transformation g to get the bag prediction. The theoretical justification for this decomposition is based on the fundamental theorem of symmetric functions, which, as
-			formulated by Zaheer et al. (2017), states that a function on a set is permutation-invariant if and only if it can be represented in the form $\rho(\sum_{x\in X}\omega(x))$ using 
-			appropriate transfromations $\omega$ and $\rho$. Qi et al. (2017) provide an analogous approximation using the maximum operator.\\
+			formulated by \cite{zaheerDeepSets2018}, states that a function on a set is permutation-invariant if and only if it can be represented in the form $\rho(\sum_{x\in X}\omega(x))$ using 
+			appropriate transfromations $\omega$ and $\rho$. \cite{qiPointNetDeepLearning2017} provide an analogous approximation using the maximum operator.\\
 
-			The proposed operator by \cite{ilse2018} weights the instanze representations $h_k$ with trained attention weights $a_k$ and calculates their sum:\\
+			The proposed operator by \cite{ilseAttentionbasedDeepMultiple2018} weights the instanze representations $h_k$ with trained attention weights $a_k$ and calculates their sum:\\
 			\begin{align*}
 				z = \sum^K_{k=1}a_kh_k, \quad a_k = \frac{exp\{w^Ttanh(Vh_k^T)\}}{\sum_{j=1}^Kexp\{w^Ttanh(Vh_j^T)\}},
 			\end{align*}
@@ -344,21 +346,29 @@ labelsep=space]{caption}
 			where $\odot$ is the elementwise muliplikation and $U$ an additionnal set of parameters. Both variants are evaluated on synthetic MNIST-bags as well as two histopathological datasets 
 			and reach an AUC of 0.968 on the colon cancer dataset. Primarily important for this thesis next to the trainabilty is the interpretability of the attention weights because it could 
 			allow counting of positive instances under the right cirumstances.\\
+
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.5\textwidth]{example-image}
+				\caption{Schematic for the Attention-based MIL}
+				\label{fig:attmil_schema}
+			\end{figure}
+
 		\subsection{CLAM}
 			With increasingly bigger bags Attention-based MIL reaches its limits because the bag label represents only a comparatively weak training signal.
 			This problem is espacially prevalent in medical image analysis, where bags, representing whole slide images, can contain thousands of instances.
 
-			\cite{luClam2021} propose CLAM (Clustering-constrained Attention Multiple Instance Learning), which addresses
+			\cite{luDataEfficientWeakly2020} propose CLAM (Clustering-constrained Attention Multiple Instance Learning), which addresses
 			this data inefficiency. The authors describe their approach as a method that "uses attention-based learing to identify 
 			subregions of high diagnostic value to accurately classify whole slide and instance-level clustering over identified
-			representative regions to constrain and refine the feature space" \cite{luClam2021}.
+			representative regions to constrain and refine the feature space" \cite{luDataEfficientWeakly2020}.
 			The model constist of two interlocking components: an attention branch for bag classification and an additional 
 			instance-level task, that regulates the feature space.\\
 
-			Architecturally, the patches are first passed through a pretrained ResNet-50 \cite{heResnet2016} to extract feature vectors.
+			Architecturally, the patches are first passed through a pretrained ResNet-50 \cite{heDeepResidualLearning2015a} to extract feature vectors.
 			An attention network operates on these representations. In the multi-class variant, this network has class-specific branches, 
 			so that a separate weighting of the instances is learnt for each class. Aggregation follows the principle set out 
-			by \cite{ilse2018}.\\
+			by \cite{ilseAttentionbasedDeepMultiple2018}.\\
 
 			The characteristic expansion introduced by CLAM is the instance-level clustering. Because of non existent instance
 			lables, the model produces pseudo labels from the attention distribution. The top k weighted instances are treated as 
@@ -366,9 +376,9 @@ labelsep=space]{caption}
 			$k$ is set by the hyperparameter \textit{k\_sample}. These pseudo labels are then used to train an additional
 			instance classifier, whose loss froms the feature space, so that class relevant and irrelevant regions are better
 			separated. As the labels generated in this way are, by their very nature, noisy — the most heavily weighted tiles 
-			do not necessarily correspond to the actual class — \cite{Lu et al. (2021)} do not use the standard cross-entropy for this 
-			task, but rather the smooth Top-1 SVM loss proposed by \cite{Berrada et al. (2018)}. Its margin property reduces the susceptibility 
-			to overfitting when dealing with noisy or sparse labels. \cite{berrada2018} justify the need for a smoothed formulation 
+			do not necessarily correspond to the actual class — \cite{luDataEfficientWeakly2020} do not use the standard cross-entropy for this 
+			task, but rather the smooth Top-1 SVM loss proposed by \cite{berradaSmoothLossFunctions2018}. Its margin property reduces the susceptibility 
+			to overfitting when dealing with noisy or sparse labels. \cite{berradaSmoothLossFunctions2018} justify the need for a smoothed formulation 
 			on the grounds that the loss function “must be smooth and have non-sparse gradients in order to work well with 
 			deep neural networks”.\\
 
@@ -380,6 +390,13 @@ labelsep=space]{caption}
 			CLAM was developed for the classification of whole slide images. In this thesis the procedure is adapted to the 
 			counting of grain ears where the patches from drone images are treated as instances. The modification needed
 			to achieve this task are described in \ref{sec:5.3}.\\
+
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.5\textwidth]{example-image}
+				\caption{Schematc for CLAM archtecture}
+				\label{fig:clam_schematic}
+			\end{figure}
 		
 		\subsection{Evaluation metrics}
 			The evaluation of weakly supervised counting methods touches three levels that have to be viewed sperately:
