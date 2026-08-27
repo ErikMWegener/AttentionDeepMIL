@@ -1268,13 +1268,13 @@ def run_full_image_eval(model, args):
     
 
     print(f"\nStarting full image evaluation on {len(cal_ids)} calibration and {len(test_ids)} test images...")
-    cal_df = evaluate_image_set(model, cal_ids, args.full_image_eval,
+    cal_df = evaluate_image_set(model, cal_ids, args.full_image_cal,
                             args.full_image_patch_size,
                             grayscale=not args.rgb,
                             threshold=args.full_image_threshold,
                             img_ext=args.full_image_ext)
 
-    test_df = evaluate_image_set(model, test_ids, args.full_image_eval,
+    test_df = evaluate_image_set(model, test_ids, args.full_image_test,
                              args.full_image_patch_size,
                              grayscale=not args.rgb,
                              threshold=args.full_image_threshold,
@@ -1329,9 +1329,9 @@ def run_full_image_eval(model, args):
                 cal_fn = fit_calibration(cal_df[count_col], cal_df['gt_count'],
                                          kind=kind)
                 cal_pred = np.asarray(cal_fn(cal_df[count_col]), dtype=float).ravel()
-                metrics[f'cal_{count_col}_cal_mae'] = float(np.abs(cal_pred - cal_df['gt_count']).mean())
+                metrics.update({f'cal_{kind}_{count_col}_{k}': float(v) for k, v in calculate_counting_metrics(cal_pred, cal_df['gt_count']).items()}) 
                 test_pred = np.asarray(cal_fn(test_df[count_col]), dtype=float).ravel()
-                metrics[f'test_{count_col}_cal_mae'] = float(np.abs(test_pred - test_df['gt_count']).mean())
+                metrics.update({f'test_{kind}_{count_col}_{k}': float(v) for k, v in calculate_counting_metrics(test_pred, test_df['gt_count']).items()}) 
                 if cal_fn.kind == 'linear':
                     metrics[f'cal_{count_col}_cal_slope'] = float(cal_fn.estimator.coef_[0])
                     metrics[f'cal_{count_col}_cal_intercept'] = float(cal_fn.estimator.intercept_)
@@ -1365,8 +1365,8 @@ def run_full_image_only(args):
         raise ValueError('--full_image_only ist nur fuer --model clam verfuegbar.')
     if not args.load_model:
         raise ValueError('--full_image_only benoetigt --load_model.')
-    if not args.full_image_eval:
-        raise ValueError('--full_image_only benoetigt --full_image_eval.')
+    if not args.full_image_test or not args.full_image_cal:
+        raise ValueError('--full_image_only benoetigt --full_image_test und --full_image_cal.')
 
     torch.manual_seed(args.seeds[0])
     model, model_tags = build_model(args)
@@ -1447,7 +1447,7 @@ def run_seed(args, seed, results, all_metrics, all_feature_data, log_instance_sc
         all_metrics.append(metrics)
 
         # ── Ganzbild-Auswertung (nach der Threshold-Kalibrierung) ─────────────
-        if args.full_image_eval:
+        if args.full_image_test and args.full_image_cal:
             run_full_image_eval(model, args)
 
         # ── State_dict speichern ──────────────────────────────────────────────
