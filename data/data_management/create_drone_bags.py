@@ -43,6 +43,13 @@ def load_metadata():
 
     return pos_jpgs, neg_jpgs
 
+def load_point_annotations(annotation_path):
+    """
+    Load point annotations from a text file.
+    Each line in the file should contain two numbers (x, y) representing the coordinates of a point.
+    """
+    points = np.loadtxt(annotation_path, ndmin=2)   # default delimiter splits on any whitespace
+    return points
 
 # ---------------------------------------------------------------------------
 # New approach: patch definitions + randomized bags (like create_gwhd_bags.py)
@@ -94,26 +101,99 @@ def fetch_patch_from_image(image_path, coords):
         return patch
 
 
+def _crop_patches_from_image(task):
+    """Decode one image a single time and cut all requested patches out of it.
+
+    A drone JPEG is ~5280x3956 px and PIL always decodes the whole file, so
+    opening it once per patch dominates the runtime. Everything that is needed
+    from one image is therefore collected first and cropped in one go.
+    """
+    image_path, coords_list, grayscale = task
+    patches = []
+    with Image.open(image_path) as img:
+        img.load()
+        for coords in coords_list:
+            patch = img.crop(coords)
+            if grayscale:
+                patch = patch.convert('L')
+            patches.append(np.asarray(patch, dtype=np.uint8))
+    return image_path, np.stack(patches)
+
+
+def _materialize_patches(bags_instances, grayscale, workers, desc):
+    """Fetch the pixel data for a list of bags, one decode per source image.
+
+    ``bags_instances`` is a list of per-bag instance lists. Returns a list of
+    uint8 arrays, one per bag, with shape ``(bag_len, H, W)`` for grayscale and
+    ``(bag_len, H, W, 3)`` otherwise.
+    """
+    # image_path -> [(bag index, slot index, coords), ...]
+    groups = defaultdict(list)
+    for bag_idx, instances in enumerate(bags_instances):
+        for slot_idx, instance in enumerate(instances):
+            groups[instance['image_path']].append((bag_idx, slot_idx, instance['coords']))
+
+    tasks = [(path, [c for _, _, c in entries], grayscale) for path, entries in groups.items()]
+    slots = [[None] * len(instances) for instances in bags_instances]
+
+    def scatter(result):
+        image_path, patches = result
+        for (bag_idx, slot_idx, _), patch in zip(groups[image_path], patches):
+            slots[bag_idx][slot_idx] = patch
+
+    if workers > 1 and len(tasks) > 1:
+        with mp.Pool(min(workers, len(tasks))) as pool:
+            for result in tqdm(pool.imap_unordered(_crop_patches_from_image, tasks),
+                               total=len(tasks), desc=desc):
+                scatter(result)
+    else:
+        for task in tqdm(tasks, desc=desc):
+            scatter(_crop_patches_from_image(task))
+
+    return [np.stack(bag) for bag in slots]
+
+
+def _to_bag_tensor(patches):
+    """Turn a uint8 patch stack into the normalized tensor the writer expects.
+
+    Equivalent to ``ToTensor`` + ``Normalize((0.5,), (0.5,))`` of
+    :func:`build_transform`, but applied to the whole bag at once.
+    """
+    tensor = torch.from_numpy(patches)
+    if tensor.ndim == 3:                       # (N, H, W) grayscale
+        tensor = tensor.unsqueeze(1)
+    else:                                      # (N, H, W, C) rgb
+        tensor = tensor.permute(0, 3, 1, 2).contiguous()
+    return tensor.float().div_(255.0).sub_(0.5).div_(0.5)
+
+
 def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_patches,
                 output_path, dataset_name='drone_bags', split='train', bag_ratio=0.5,
-                seed=0, grayscale=True):
+                seed=0, grayscale=True, workers=None, chunk_bags=200):
     """Create randomized bags from patch definitions and write them to file.
 
     Positive bags contain a shuffled mix of positive and negative patches (with
     at least one positive patch); negative bags contain only negative patches.
-    Images are opened and cropped here, at write time.
-    """
-    transform = build_transform(grayscale)
 
+    The bag compositions are sampled first, then the pixel data is fetched per
+    source image instead of per patch. Bags are processed in chunks of
+    ``chunk_bags`` so that only a bounded amount of patch data is held in memory.
+    """
     num_pos_bags = int(num_bags * bag_ratio)
     num_neg_bags = num_bags - num_pos_bags
+
+    if workers is None:
+        workers = max(1, (os.cpu_count() or 1) - 1)
 
     r = np.random.RandomState(seed)
     print(f'Creating {num_pos_bags} positive and {num_neg_bags} negative bags with '
           f'mean length {mean_bag_len} and variance {var_bag_len}...')
 
+    # ---- 1. Sample the bag compositions (no pixel data touched yet). --------
+    plans = []
+
     # Positive bags with a shuffled mix of positive and negative patches.
-    for i in tqdm(range(num_pos_bags), desc=f"Creating positive {split} bags"):
+    for i in range(num_pos_bags):
         bag_length = max(1, int(r.normal(mean_bag_len, var_bag_len)))
         num_positive = r.randint(1, bag_length) if bag_length > 1 else 1  # at least one positive patch
         num_negative = bag_length - num_positive
@@ -128,25 +208,11 @@ def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_
         order = r.permutation(len(instances))
         instances = [instances[j] for j in order]
 
-        patches = []
-        instance_labels = []
-        for instance in instances:
-            patch = fetch_patch_from_image(instance['image_path'], instance['coords'])
-            patches.append(transform(patch))
-            instance_labels.append(instance['label'])
-
-        bag_tensor = torch.stack(patches)
-        dataset_manager.DatasetWriter(output_path).write(dataset_name,
-                                                    f'{split}_{i}',
-                                                    None,
-                                                    label=1,
-                                                    patches=bag_tensor,
-                                                    count=num_positive,
-                                                    instance_label=torch.tensor(instance_labels),
-                                                    split=split)
+        plans.append({'image_id': f'{split}_{i}', 'label': 1, 'count': num_positive,
+                      'instances': instances})
 
     # Negative bags with only negative patches.
-    for i in tqdm(range(num_neg_bags), desc=f"Creating negative {split} bags"):
+    for i in range(num_neg_bags):
         bag_length = max(1, int(r.normal(mean_bag_len, var_bag_len)))
         num_negative = bag_length  # all patches in negative bags are negative
 
@@ -156,22 +222,29 @@ def create_bags(num_bags, mean_bag_len, var_bag_len, positive_patches, negative_
         order = r.permutation(len(instances))
         instances = [instances[j] for j in order]
 
-        patches = []
-        instance_labels = []
-        for instance in instances:
-            patch = fetch_patch_from_image(instance['image_path'], instance['coords'])
-            patches.append(transform(patch))
-            instance_labels.append(instance['label'])
+        plans.append({'image_id': f'{split}_{i+num_pos_bags}', 'label': 0, 'count': 0,
+                      'instances': instances})
 
-        bag_tensor = torch.stack(patches)
-        dataset_manager.DatasetWriter(output_path).write(dataset_name,
-                                                    f'{split}_{i+num_pos_bags}',
-                                                    None,
-                                                    label=0,
-                                                    patches=bag_tensor,
-                                                    count=0,
-                                                    instance_label=torch.tensor(instance_labels),
-                                                    split=split)
+    # ---- 2. Fetch pixels chunk by chunk and write the bags. -----------------
+    writer = dataset_manager.DatasetWriter(output_path)
+    num_chunks = (len(plans) + chunk_bags - 1) // chunk_bags
+
+    for chunk_nr, start in enumerate(range(0, len(plans), chunk_bags), start=1):
+        chunk = plans[start:start + chunk_bags]
+        bags = _materialize_patches([p['instances'] for p in chunk], grayscale, workers,
+                                    desc=f'Cropping {split} chunk {chunk_nr}/{num_chunks}')
+
+        for plan, patches in tqdm(list(zip(chunk, bags)),
+                                  desc=f'Writing {split} chunk {chunk_nr}/{num_chunks}'):
+            instance_labels = [instance['label'] for instance in plan['instances']]
+            writer.write(dataset_name,
+                         plan['image_id'],
+                         None,
+                         label=plan['label'],
+                         patches=_to_bag_tensor(patches),
+                         count=plan['count'],
+                         instance_label=torch.tensor(instance_labels),
+                         split=split)
 
     print(f'Finished creating {num_bags} {split} bags and saved them to {output_path}.')
 
@@ -236,19 +309,22 @@ def run_bags(args, pos_jpgs, neg_jpgs):
                 positive_patches[:train_pos_index],
                 negative_patches[:train_neg_index],
                 args.output_path, args.dataset_name, split='train',
-                bag_ratio=args.bag_ratio, seed=args.seed, grayscale=args.grayscale)
+                bag_ratio=args.bag_ratio, seed=args.seed, grayscale=args.grayscale,
+                workers=args.workers, chunk_bags=args.chunk_bags)
 
     create_bags(args.num_bags[1], args.mean_bag_len, args.var_bag_len,
                 positive_patches[train_pos_index:train_pos_index+val_pos_index],
                 negative_patches[train_neg_index:train_neg_index+val_neg_index],
                 args.output_path, args.dataset_name, split='validation',
-                bag_ratio=args.bag_ratio, seed=args.seed, grayscale=args.grayscale)
+                bag_ratio=args.bag_ratio, seed=args.seed, grayscale=args.grayscale,
+                workers=args.workers, chunk_bags=args.chunk_bags)
 
     create_bags(args.num_bags[2], args.mean_bag_len, args.var_bag_len,
                 positive_patches[train_pos_index+val_pos_index:],
                 negative_patches[train_neg_index+val_neg_index:],
                 args.output_path, args.dataset_name, split='test',
-                bag_ratio=args.bag_ratio, seed=args.seed, grayscale=args.grayscale)
+                bag_ratio=args.bag_ratio, seed=args.seed, grayscale=args.grayscale,
+                workers=args.workers, chunk_bags=args.chunk_bags)
 
 
 if __name__ == "__main__":
@@ -264,6 +340,8 @@ if __name__ == "__main__":
     parser.add_argument('--bag_ratio', type=float, default=0.5, help='Ratio of positive to negative bags (randomized bags).')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility (randomized bags).')
     parser.add_argument('--legacy', action='store_true', help='Use the legacy one-bag-per-image approach instead of randomized bags.')
+    parser.add_argument('--workers', type=int, default=None, help='Processes used to decode and crop the source images (default: CPU count - 1).')
+    parser.add_argument('--chunk_bags', type=int, default=200, help='Number of bags whose patches are held in memory at once.')
 
     args = parser.parse_args()
 
