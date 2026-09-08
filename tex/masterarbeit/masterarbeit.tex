@@ -132,7 +132,7 @@ labelsep=space]{caption}
 			over many of parcels \cite{guoAerialImageryAnalysis2018}. Exactly this effort motivates the development of automated, image-based 
 			ear-counting methods, which come with their own methodological difficulties.
 
-		\subsection{Difficulty of annotations}
+		\subsection{Difficulty of annotations ???}
 			Grain ear counting is difficult for a multitude of partly related reasons. At its core lies the overall stand density. 
 			Compared to other crops, cereals are sown more densly, with a density of 200 to 600 ears per square metre, leading to only partly visible ears in image patches \cite{xiongTasselNetv2InfieldCounting2019}.
 			These dense scenes are charaterised by strong occlusion and small object sizes leading to a difficult analysis. Occlusions stem from two sources: 
@@ -192,7 +192,7 @@ labelsep=space]{caption}
 			from high-resolution RGB nadir (top-down) images and found that, under calibrated conditions, both approaches achieved a relative root-mean-square error of around six percent, 
 			although Faster-R-CNN remained more robust at advanced growth stages because the ears and background appear differently as the plants mature. 
 			For their Faster-R-CNN model, Madec et al. reported an average precision of 0.85, a relative RMSE of 5.3 per cent and a coefficient of determination of 0.91.
-			With the publication of the Global Wheat Head Detection dataset by \textcite{davidGlobalWheatHead2020}, detection-based wheat head recognition was standardised. In their 2023 pulication,
+			With the publication of the Global Wheat Head Detection dataset by \textcite{davidGlobalWheatHead2021}, detection-based wheat head recognition was standardised. In their 2023 pulication,
 			they analysed the winning models from the 2020 and 2021 Global Wheat Challenges \cite{davidGlobalWheatHead2020,davidGlobalWheatHead2021} --- predominantly EfficientDet and YOLO variants --- and reported that the 
 			winning solutions achieved an average domain accuracy of around 0.7, whilst the resulting estimate of the number of ears across all test data achieved a coefficient of determination of 
 			$R^2$ = 0.814 with a relative RMSE of 0.185 \cite{davidGlobalWheatHead2023}. The authors themselves emphasise that this counting performance falls short of that achieved in specialised studies such as  
@@ -223,7 +223,7 @@ labelsep=space]{caption}
 			which underpins the motivation for weakly supervised methods. However, the figures reported are not directly comparable across studies, as they are based on different datasets, 
 			splits and metrics.
 
-		\subsection{Weakly supervised concept}
+		\subsection{Weak supervisson to Multiple Instance Learning}
 			Weak supervision is a machine learning paradigm that allows models to be trained with limited or imprecise labelled data. In the context of counting grain ears,
 			this means a spectrum of decreasing strength of annotation: from point annotations with just one point per object, through over image or bag-level count labels that only
 			give the total number of objects in an image, to only image-level class labels that only indicate the presence or absence of objects.
@@ -522,117 +522,296 @@ labelsep=space]{caption}
 				homogeneous datasets yield lower values than heterogeneous ones.
 
 	\section{Data}\label{sec:4}
-		\subsection{GWHD dataset}
-			% - Overview of the dataset\
-			% - Different wheat varieties\
-			% - Different growth stages\
-			% - Different lighting conditions\
-			% - Different camera angles\
-			% - Different countries\
-			% - Different image resolutions\
-			% - Different annotation quality\
-			When it comes to the detection and counting of wheat ears, the Global Wheat Head Detection (GWHD) dataset 
-			\cite{davidGlobalWheatHead2020} is the most comprehensive publicly available dataset. 
-			It was created to address the lack of large, diverse datasets for wheat head detection and counting, which are essential 
-			for developing robust machine learning models. The GWHD dataset contains around 6.300 images with 275.187 with bounding boxes annotated wheat ears from 12 countries, 
-			capturing a wide range of wheat varieties, growth stages, lighting conditions, and camera angles. 
-			This diversity makes it an ideal benchmark for evaluating the performance of different detection and counting methods and therefore 
-			makes it easier to compare the methods developed in this thesis with other approaches. Additionally, the annotations in the dataset
-			allowed the easy counting evaluation for the developed method on a big dataset without having to annotate a new dataset. 
-			The preexisting splits for training, testing and validation were deemed unsuitable for the purpose of this thesis, as the domain shift between the training and test sets is too large.
-			Therefore, a new split was created that ensures a more balanced distribution of the different countries and growth stages across the three sets.
-		\subsection{Drone dataset}
-			% - Overview of the dataset\
-			% - Highlighting the differences in growth stages between the new and annotated datasets as well as the synthetic one
-			% - The new dataset
-			The drone datasets consist of three different collection methods. The first dataset was collected in 2025 and contains ? images
-			of wheat fields in the final growth stage just before harvest. The second dataset was collected in 2026 and contains ? images
-			of wheat fields in just before and after the ears are visible to to gather positive and negative examples for the counting task.
-			The third dataset is a synthetic dataset that was created by the work group of Birgit Möller. It consists of 
-			? with an average ear density of ? and a variance of ?. Only the first and third datasets have point annotations for the ears which 
-			led to different approaches to the generation of patches and bags for the counting task.
-		\subsection{Data preprocessing}
-			The preprocessing the data was almost identical for each of the datasets with the exception of patch definition. With the exception
-			of the color datasets every image was converted to grayscale using the standard conversion formula to reduce the complexity of the model.
-			To create the bags, the images were cut into patches of size 128x128 for the drone images and 64x64 for the GWHD images.
-			Depending on the annotaion type, different approaches were used to define the patches. For the GWHD dataset, patch grids were 
-			centered on the annotated bounding boxes and patches with a certain overlap with the bounding boxes were considered positive.
-			For point annotated images, each point resulted in exactly one positive patch centered on the point. The positve patches for the drone images 
-			were simply cut out of the positive images, bettign on the density of the ears in the images. The negative patches were cut from a regular grid 
-			for all datasets the the supervsion of no overlap with any annotaion.
+			\begin{table}
+				\centering
+				\begin{tabular}{@{}lcccccc@{}}
+					\toprule
+					Dataset & Year & Location & Ears visible & Images & Annotation & Resoltion \\
+					\midrule
+					GWHD & 2021 & 12 countries & Yes & 6.300 & Bounding boxes & 1024x1024\\
+					Drone\_annot & 2025 & ? & Yes & 173 & Point & 1024x1024\\
+					Drone\_BBG\_1 & 2026-05-26 & Bernburg & No &  88 & --- & 5280×3956\\
+					Drone\_BBG\_2 & 2026-06-08 & Bernburg & Yes &  88 & --- & 5280×3956\\
+					Synth\_Drone\_Pos & --- & --- & Yes & 1000 &  Point  & 1024x1024\\
+					Synth\_Drone\_Neg & --- & --- & No & 1000 & --- & 1024x1024\\
+					\bottomrule
+				\end{tabular}
+				\caption{Overview of the underlying image datasets used in this thesis.}
+				\label{tab:datasets}
+			\end{table}
 
-			Bag creation was identical for all datasets. Half the bags of each split were created with a positive label --- at least one positive
-			patch --- and the other half with a negative label --- no positive patches. The mean bag length was set to 100 with a variance of 20. 
-			Each bag was created by randomly sampling patches from a predefined pool of positive and negative patches. The pools for the different splits 
-			were separated to avoid data leakage. The number of positve patches in the positive bags was randomly sampled from a uniform distribtion
-			between 1 and the bag length in order to simulate the natural variance in the number of ears per image. This led to an average positive 
-			patch count per positive bag of 50. The negative bags were created by randomly sampling only from the negative patch pool.
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.92\textwidth]{tikz/bag_creation.pdf}
+				\caption{Schematic of the three-step bag creation process}
+				\label{fig:bag_creation}
+			\end{figure}
+
+			The datasets used in this thesis consist of bags that are built using patches extracted from different image datasets (Table~\ref{tab:datasets}). 
+			This allows the use of cheap bag labels for training instead of expensive instance labels and is the exact data format needed for 
+			the weakly supervised MIL models proposed in this thesis. A problem that arose from the datasets --- caused by their different original purpose --- 
+			is the lack of sufficient true-negative images without any wheat ears. This means that the bags could not be created by treating each images, cut into patches, 
+			as a single bag. Instead, the patches are extracted from all images, pooled into positive and negative patches, and 
+			bags are created by randomly sampling from the pools. This results in a three-step process for the bag creation: (1) image dataset choice, (2) patch generation and pooling 
+			and (3) bag creation. The bag creation follows the same process for all datasets, but the patch generation differs depending on the anntations available
+			in the underlying image dataset. The following sections describe the datasets, the patch generation and bag generation in more detail.
+		\subsection{Image datasets}
+			\subsubsection{GWHD dataset}
+				For the detection and counting of wheat ears, the Global Wheat Head Detection (GWHD) dataset 
+				\cite{davidGlobalWheatHead2021} is the most comprehensive publicly available dataset. 
+				It was created to address the lack of large, diverse datasets for wheat head detection and counting, which are essential 
+				for developing robust machine learning models. The GWHD dataset contains around 6,300 images taken at ground level with 275,187 wheat ears annotated with bounding 
+				boxes from 16 institutions, capturing a wide range of wheat varieties, growth stages, lighting conditions, and camera angles. 
+				This diversity makes it an ideal benchmark for evaluating the performance of different detection and counting methods. 
+				Additionally, the annotations allow the counting performance of the developed method to be evaluated on a large dataset without annotating a new one.
+				The first of two problems posed by this dataset is that
+				less than 10 images are true negatives without any annotations. This makes it impossible to define bags image-wise, as the negative bags would be underrepresented.
+				Instead, the patch-pooling method describe above was applied, with patches defined by ther overlap with the bounding boxes. The other problem is the 
+				strong domain shift between the images of the different splits. Using those splits would add an additional level of difficulty to the already difficult counting 
+				task. Therefore, new splits were created where each split received a distinct percentage of the patch pools relative to its bag number; the patch pools were also split to avoid data leakage.
 			
-			% - How the data is preprocessed for the proposed method\
-			% - How the data is split into train, validation and test set\
-			% - How the data is split into bags and instances\
-			% - How the data is augmented\
-			Because this thesis focused more on the general possibilities of the prosposed method and enough training data was available,
-			no data augmentation was applied.
+			\subsubsection{Real drone images}
+				The drone images are split into two different datasets of images taken with ? form a height of 4 m. The first was collected in 2025 and contains 173 point-annotated images of wheat fields
+				in the final growth stage just before harvest. Similarly to the GWHD images, the annotations allow for an instance-level evaluation of the counting performance.
+				The pre-existing train/val/test (83/20/70 images) splits were used, as there is no domain shift between the splits. The missing true-negative 
+				images required the same patch-pooling method as for GWHD, applied within the existing splits, with the positive patches defined by the point annotations.
+
+				The second set of images was specifically collected for this thesis in 2026 and contains 176 images. Half of the images were collected before the flowering stage
+				as true negatives and the other half after the wheat ears were visible. Both were taken in the same field. This clean separation of the positive and negative images, the fact that 
+				the images do not need to be cropped to define the field section and the high density of wheat ears in the positive images allow for a simple patch-collection method.
+				Positive patches were cut in a regular grid from the Drone\_BBG\_2 images, while negative patches were cut in a regular grid from the Drone\_BBG\_1 images. 
+				The resulting patch pools were then used to create the bags by random sampling. A risk of this method is label noise in the positive patches,
+				as there is no guarantee that every positive patch contains a wheat ear.
+		
+			\subsubsection{Synthetic drone images}
+				In order to have easy access to a large number of point-annotated images for testing different methods, a synthetic dataset was created using
+				a model trained on real drone images. 1000 positive and 1000 negative images were generated, which were then used to define the positive and negative
+				patch pools used for random sampling of the bags. The only difference from the method used on the real annotated drone images is that the negative 
+				patches were defined on the negative images without any wheat ears. This dataset was only used to test the method for general feasibility, 
+				representing an easier problem than the GWHD images, because of the clearer separation of plant and background.
+		
+		\subsection{Patch extraction \& labelling}
+			The patch definition process varies depending on the annotation type of the images. For images with \texttt{Bounding boxes}, the positive patches
+			were defined by centring a regular grid of patches on each bounding box, ensuring that each patch in the grid fulfilled the minimum overlap
+			requirement with the bounding box (default: 100\% of the patch in the bounding box). For images with \texttt{point annotations} each annotation resulted in exactly one positive patch centred on the point.
+			For the \texttt{time-dependent} drone images, the positive patches were cut on a regular grid from the positive images.
+			Negative patches were generally defined by a regular grid of determined patch size on either true-negative images or on positive images, under the constraint of 
+			no overlap with any annotation. Before saving the patches into the bags, they were converted to grayscale using the standard conversion formula to 
+			reduce the complexity of the model. This step was skipped for the colour datasets. In this thesis, three patch sizes were used depending on the experiment: 32$\times$32, 64$\times$64 and 128$\times$128.
+			The chosen patch size is mentioned in the respective dataset name.
+
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.75\textwidth]{example-image}
+				\caption{Schematic of the patch definition process for the different annotation types.}
+				\label{fig:patch_definition}
+			\end{figure}
+
+			\begin{figure}
+				\centering
+				\includegraphics[width=0.75\textwidth]{example-image}
+				\caption{Example of the bbox overlap}
+				\label{fig:bbox_overlap}
+			\end{figure}
+		
+		\subsection{Bag construction}
+			The bag construction process is identical for all datasets. Half of the bags of each split were created with a positive label and the other half with a negative label.
+			The mean bag length was set to 100 with a variance of 20. The patches for each bag were randomly sampled from separate positive and negative patch
+			pools for each split to avoid data leakage. The number of positive patches in the positive bags was uniformly sampled between 1 and the bag length (mean $\approx 50$) 
+			to simulate	the natural variance in the number of ears per image. The standard bag split was 1000/200/200 for train/val/test.
+			Because the number of images was sufficient and the purpose of this thesis was to test the general feasibility of the method, no data augmentation was applied.
+
+		\begin{table}
+				\centering
+				\begin{tabular}{@{}lccc@{}}
+					\toprule
+					Dataset & Image Set & Pos Density & Bag Length \\
+					\midrule
+					 & & & \\
+					\bottomrule
+				\end{tabular}
+				\caption{Overview of the bag datasets used in this thesis.}
+				\label{tab:bags}
+			\end{table}
 
 	\section{Method}
 		\subsection{Wheat head counting as a MIL problem}
-			% - The basic idea is that the drone image is cut into patches with each ptach containing a head in the best case\
-			% - Through the attention layer the most important patches for a positive (or negative) bag label can be identified\
-			% - With a correctly calculated threshold the positive and negative patches might be seperated and then the positves could be counted as the number of heads in the image/bag\
-			% - Only works with perfect patches and if each patch only has exactly one head on it\
-			The counting method proposed in this thesis is based on the assumption that positive and negative 
-			patches of a bag can be sufficiently separated by the attention mechanism to allow counting 
-			of each class. The idea stems from Figure~\ref{fig:mnist_att_weight_vis} from the publication of 
-			\textcite{ilseAttentionbasedDeepMultiple2018}, where the attention weights of a positive bag 
-			of MNIST digits are visualized. In said example, the weights for positive and negative 
-			patches are clearly separatable by a threshold, allowing the counting of the positive instances.
+
+			While there are datasets with annotated wheat ears, such annotation only exists for a small subset of drone images, which would not 
+			be enough to train a powerful deep neural network. The labels that are easy to create are the bag labels, which are obtained by 
+			simply looking at the image and deciding whether it contains a wheat ear or not. This annotation, while useless for detection, lends itself 
+			perfectly to the MIL paradigm. For that purpose, a bag $X$ is defined as a set of patches $\{x_1,...,x_K\}$, which can originate from 
+			one or several images. Each bag is assigned a label $Y$ based on the standard MIL assumption, i.e. $Y = max(y_1,...,y_K)$, where 
+			$y_k$ is the label of the patch $x_k$. For the annotated datasets, the patch labels are known and can be used to evaluate the 
+			instance-level separation, but are ignored for training. 
+
+			For the bag classification task, attention-based MIL is used as the permutation-invariant aggregation operator. The bag representation is the 
+			weighted sum of the instance representations, where the weights are learned by the attention mechanism. These weights represent
+			the contribution of each instance to the bag label. If the attention mechanism is able to learn a good separation of the positive
+			and negative patches, the positive patches can be counted by applying a threshold to the attention weights. This number can then
+			be used as a proxy for the number of wheat ears in the image. This idea is the central hypothesis of this thesis.
+
+			However, even before experimentation, there are three limiting assumptions that need to be made for this method to work. Firstly, 
+			each patch needs to be defined as perfectly as possible to contain exactly one wheat ear. Secondly, the patches need to be cut such that individual wheat ears are separated.
+			Lastly, the attention mechanism needs to be capable of learning a good separation of the positive and negative patches.
+			The first two assumptions cannot be guaranteed, especially for the unannotated drone images, but the third assumption is exactly 
+			what this thesis is trying to test. The experiments are designed to determine whether the attention mechanism is capable of learning a good separation 
+			of the positive and negative patches, and whether the counting performance is good enough to be used as a proxy for the number of wheat ears in an image.
+
+			Finally, the proposed method has a theoretical label-saturation problem. The binary presence signal of the bag label saturates after 
+			one positive patch. A bag with one positive patch and a bag with 50 positive patches will both generate the same learning signal and, when 
+			the supervision saturates, the model lacks the gradient needed to separate the different count values.
+		
+		\subsection{Counting}\label{sec:5.8}
+			The main counting goal of this thesis is to count the number of wheat ears in a given image. This is a difficult task because the 
+			proposed method has no direct access to the number of wheat ears in an image. Therefore, a secondary counting goal is defined,
+			which is to count the number of positive patches in a bag. This goal is more general and can be accessed directly through the 
+			attention mechanism or the instance-level branch of the models. Most of the thesis is focused on the secondary counting goal,
+			with the idea that the primary counting goal can be achieved by first counting the positive patches and then converting this 
+			number into a wheat-ear count. However, for the conversion to be possible, the performance of the secondary counting goal
+			needs to be as good as possible, which is the main focus of the experiments. Throughout the thesis, metrics for both counting goals are reported;
+			metrics regarding the primary goal are denoted as $c_{\text{ear}}$ and metrics regarding the secondary goal are denoted as $c_{\text{patch}}$.
+
+			If it were possible to define the patches such that each patch contains exactly one wheat ear, both counting goals would be equivalent. 
+			Because of the dense tillering of the wheat plants and the resulting density of the ears, this is not possible.
+			The conversion has to be calibrated to find a function that maps the number of positive patches to the number of wheat ears. The two
+			tested functions are a linear and an isotonic function. The linear function is defined as $c_{\text{ear}} = \alpha\,c_{\text{patch}} + \beta$, where 
+			$\alpha$ and $\beta$ are the parameters of the function. The isotonic function is a non-parametric function that is fitted to the data 
+			using isotonic regression. Both functions are fitted on the validation set and then applied to the test set, using datasets with three
+			different patch sizes (32, 64, 128) to find the best-performing patch size for the counting task. The best-performing patch size is 
+			then used for the final evaluation of the method.
+
+		\subsection{Attention-based MIL}
+				The attention-based MIL model in this thesis follows the architecture presented in Section~\ref{sec:attmil}, proposed by 
+				\textcite{ilseAttentionbasedDeepMultiple2018} and applied only to the secondary counting goal. The main addition to the 
+				original architecture is the central counting mechanism, which is a simple thresholding of the attention weights to count 
+				the number of positive patches in a bag. Additional modifications were made to the backbone and the attention mechanism to 
+				improve the counting performance of the model (Figure~\ref{fig:mod_attmil}). Both the gated and ungated attention mechanisms were tested.
+
+				The modifications to the backbone are the addition of GroupNorm layers after each convolutional layer to stabalise the 
+				training process, a third convolutional layer to increase the capacity of the feature extractor, and a dropout layer 
+				to prevent overfitting. GroupNorm was chosen instead of BatchNorm because of the limitation of one bag per batch. These 
+				modifications were aimed at increasing the complexity of the model to allow for better learning of the intricate
+				patterns of wheat ears compared to the MNIST dataset used to validate the original architecture (Section~\ref{sec:6.1}).
+
+				For the attention mechanism, different activation functions were tested to find the best-performing one for the counting task.				
+				Softmax activation is the standard choice for attention mechanisms and is used as the baseline. It normalises the weights 
+				so that they sum to one, which makes them permutation- and size-invariant. A problem for the counting task is that the sum of the weights
+				is spread more thinly with increasing bag length, increasing the difficulty of separating the positive and negative patches 
+				because their weights are closer together. Additionally, positive patches compete with each other for the attention weights,
+				which can lead to a normalisation-saturation problem where strong positive patches are weighted too thin, causing other positives to fall below the threshold.
+				This problem grows with bag length and number of positive patches. Sparsemax and entmax are two alternatives to softmax
+				that are designed to mitigate these problems. Both also project into the probability simplex and all weights sum to one,
+				but allow for sparse solutions, where unimportant patches assigned zero weight. Entmax is a generalisation of softmax and sparsemax,
+				where the degree of sparsity can be controlled by a parameter $\alpha$. For $\alpha=1$, entmax is equivalent to softmax, for $\alpha=2$ 
+				it is equivalent to sparsemax, the standard being $\alpha=1.5$. 
+
+				Sigmoid and min-max normalisations are two alternatives that view each attention weight independently and do not normalise to a sum of one.
+				This allows for an easier separation of the patches, but the attention mechanism is no longer permutation- and size-invariant. 
+				The sigmoid function maps the weights to the range of $[0,1]$ and min-max rescales the weights linearly to the range of $[0,1]$. 
+				Both methods allow for a more direct separation of the positive and negative patches, but are more sensitive to outliers and the distribution of the weights. 
+				The sigmoid function is more robust to outliers, while min-max normalisation is more sensitive to them. 
+				The problem of the lost permutation- and size-invariance due to the lack of normalisation to a sum of one is addressed by the $K$-scaling, 
+				which is applied after the attention mechanism. This is done by dividing each attention weight by the average attention weight and then applying 
+				LayerNorm, ensuring that the weights are properly scaled even though they do not sum to one.
+
+
+				The standard counting threshold for the attention weights differs between the activation functions. Softmax uses the average attention 
+				weight of $1/K$ as the threshold, sparsemax and entmax use 0.0 as default and sigmoid and min-max use the Otsu method 
+				to find the optimal threshold for each bag. The Otsu method is a simple and effective way of finding the optimal threshold for a given distribution of values. 
+				It works by maximising the between-class variance of the two classes (positive and negative patches) in the distribution, 
+				which is equivalent to minimising the within-class variance. This results in a threshold that separates the two classes as well as possible. 
+				
+				The loss of the bag classification uses the standard binary cross-entropy loss, which is defined as:
+				\begin{align*}
+					\mathcal{L} = -\left[Y\log \hat{p} + (1-Y)\log(1-\hat{p})\right] 
+				\end{align*}
+				with $\hat{p}$ clamped to $[10^{-5},1-10^{-5}]$. Class weighting is not needed because the bag labels are balanced at 50/50 
+				between positive and negative bags. The loss is backpropagated using the Adam optimiser with a standard learning rate of $10^{-4}$ and 
+				a weight decay of $10^{-5}$, over 20 epochs for MNIST and 50 epochs for wheat datasets. Experiment runs were performed with three different
+				seeds (1, 10, 100) to account for the stochasticity of the training process. For more robust results, final runs were performed with 5 seeds 
+				instead (additional seeds 1000 and 10000). When using a pretrained backbone, its learning rate was reduced by a factor of 100.
+				
+				The variable bag length of some datasets is accounted for by the attention mechanism and the batch size of one bag. Through \textit{squeeze(0)}, the batch dimension is removed,
+				which makes any padding and masking unnecessary, allowing free variation of the bag length. Attention pooling is permutation- and size-invariant.
+				
+				\begin{figure}
+					\centering
+					\includegraphics[width=\textwidth]{tikz/att_mil_modified.pdf}
+					\caption{Schematic for the modified Attention-based MIL architecture}
+					\label{fig:mod_attmil}
+				\end{figure}
+
+		\subsection{CLAM-based implementation}\label{sec:5.3}
+			The second model architecture used in this thesis is based on the CLAM architecture (Section~\ref{sec:clam}) proposed by \textcite{luDataEfficientWeakly2020} 
+			and adds an instance-level classification task to the attention-based MIL model, shown in Figure~\ref{fig:clam_impl}. As in the original CLAM architecture, 
+			the instance classifier is trained on pseudo-labels generated from the attention weights. The top-$B$ and bottom-$B$ attention-weighted patches are used as strong
+			positive and negative evidence for the bag label respectively. The instance classification task runs in parallel to the attention branch 
+			and takes the same feature representations as input. Because the task here is binary rather than multi-class, the standard binary cross-entropy loss is used 
+			for the instance classifier, instead of the smooth Top-1 SVM loss of the original architecture. The full loss is
+			calculated as the weighted sum of the bag and instance-level losses, with the weight of each branch being set by the hyperparameter \textit{--bag\_weight}.
 			
-			\begin{figure}[ht]
+			The main differences from the original CLAM architecture are the use of the end-to-end trainable backbone from the attention-based MIL model instead of 
+			the pretrained ResNet-50 and the use of a single branch for the attention mechanism and instance classifier instead of the multi-class variant, since the task is binary.
+
+			The goal of the additional instance-level task is to improve the separation of the positive and negative patches in the feature space
+			by forcing the model to directly learn the separation. With the additional learning signal, the backbone can learn 
+			more distinct features for the patches.
+
+			\begin{figure}
 				\centering
-				\includegraphics[width=0.75\textwidth]{example-image}
-				\caption{Attention weight visualization for a positive bag of MNIST digits \cite{ilseAttentionbasedDeepMultiple2018}}
-				\label{fig:mnist_att_weight_vis}
+				\includegraphics[width=\textwidth]{tikz/clam_architecture.pdf}
+				\caption{Schematic for the CLAM-based architecture used in this thesis}
+				\label{fig:clam_impl}
 			\end{figure}
 
-			The goal is to use the same mechanism for the counting of wheat ears in the drone images.
-			For this to work, images are viewed as bags from which patches are extracted. From a model trained
-			these bags the attention weights are extracted and a threshold is applied to separate the patch classes.
-			If each patch is perfrectly defined and contains exactly one wheat ear, the number of positive
-			patches would correspond to the number of wheat ears in the image. Sadly, this is almost imposible 
-			for reasons described in Section~\ref{sec:2.2}, which is a problem that will be addressed
-			through methods described in Section~\ref{sec:5.8} and tested in Section~\ref{sec:6.9}. For most of 
-			this work the focus is on the separation of the patches because if the models can not learn
-			to separate the positives and negatives, counting is impossibel by definition. The counting performance 
-			with the proposed method is therefore a direct consequence of the separation performance.
-		
-		\subsection{From patch to ear counts}\label{sec:5.8}
-			
-		\subsection{Attention-based MIL}
-				% - The AttMIL model serves as the base for the proposed method\
-				% - I added a simple naive counting method that uses a threshold to count positive instances
-				% - Modification were made to the backbone regarding its complexity adding GroupNorm (instead of BatchNorm) because of the limitation to one batch
-				% - Third convolutional layer and dropout layer to incourage more learning\
-				% - Tested were also different attention activation functions for better seperation of the positive and negative patches\
-				% \texttt{reason why the activation functions I tried do the same}
-				
-		\subsection{CLAM based implementation}\label{sec:5.3}
-					% - Decided against the smooth svm loss because the counting problem in this thesis is a binary classification problem and the smooth svm loss is only for multi-class problems\
+		\subsection{Quantile-based pseudo labeling}
+			As an alternative to the rigid top-$B$ pseudo-labeling, a quantile-based approach was tested. Instead of using a fixed number of patches,
+			which can be problematic because of the high variance in bag length and number of positive patches, the quantile-based approach uses a 
+			fixed quantile of the attention weights to define the pseudo-labels. This means the top-$q$ quantile (\textit{--pos\_quantile}) of the attention weights 
+			is used as strong positive evidence and the bottom $q$ quantile (\textit{--neg\_quantile}) as strong negative evidence. This approach allows for more 
+			flexibility in defining the pseudo-labels, as it can overcome the negative patch bias of the top-$b$ approach, and can yield a more robust training 
+			of the instance classifier.  
 
-		\subsection{Quantil based pseudo labeling}
-r represen
+			For both methods howerver, the high variance in the number of positive patches per bag is a problem. This problem is best visualised by examining what happens in the 
+			edge cases. When a bag has very few positive patches, the top-$q$ or top-$B$ choices might include negative patches, because there are no more positives to 
+			choose from. Similarly, when a bag has only positive patches, the bottom-$q$ or bottom-$B$ choices might include positive patches, because there are no more negatives to 
+			choose from. Overall, this means that when choosing the hyperparameters for the pseudo-labeling, a balance needs to be found between minimising the number of 
+			false positives and false negatives, while also ensuring that enough positive patches are included to allow the model to learn a good separation. The quantile approach
+			should lend itself better to this problem, because it allows a different weighting of the pseudo-positives and -negatives, especially when considering
+			that half the bags are negative and do not provide any positive patches. In order to find the best configuration for the pseudo-labelling, 
+			a hyperparameter search was conducted over the parameters \textit{--pos\_quantile}, \textit{--neg\_quantile} and \textit{--k\_sample}.
+
 		\subsection{Pipeline for learned grayscale conversion}
+			Early experiments on a dataset that used colour instead of grayscale images showed that the model performed worse on the colour images. In order to further 
+			investigate the possible impact of the colour information, a pipeline was added to the existing models that learns a grayscale conversion from the colour images.
+			The pipeline consists only of a 1$\times$1 convolutional layer over the colour channels, whose weights are learned during the training process. This way, the 
+			model chooses the optimal grayscale conversion for the task. The method used here is unconstrained --- the weights are not required to be non-negative or to sum to one --- 
+			which allows the learning of a difference-based contrast enhancement. This is considerably more expressive than a restrictive weighting.
+			The convolutional layer is added before the backbone and the weights are initialised with the standard grayscale conversion weights. 
+			The inputs are colour patches and the outputs passed to the backbone are the learned grayscale patches. The learned weights are extracted, normalised to one 
+			and compared to the standard grayscale conversion weights to determine whether the model learned a different weighting of the colour channels.
 
-		\subsection{Supervised baseline classificator}
+		\subsection{Feature visualisation}
+			In order to identify the reasons for the poor separation performance of the attention mechanism, the feature representations of the patches are
+			visualised using UMAP \cite{mcinnesUMAPUniformManifold2020} and color-coded by their true labels. The feature representations are extracted 
+			from the trained models for MNIST and the wheat datasets and compared to determine whether the poor separation performance is due to the feature representations 
+			or whether the problem lies within the data itself. Although the visualisation itself, being a non-linear, parameterised projection, is only illustrative
+			and not quantitative evidence, together with the instance-level AUC it can give a good indication of the separability of the positive and negative 
+			patches in the feature space.
 
-		\subsection{Feature visualization}
+		\subsection{Supervised baseline classifier}
+			To check for the existence of a learnable instance-level separation, a supervised baseline model was trained on annotated patches.
+			The model uses the same architecture as the attention-based MIL model, but feeds the patch representations directly into a binary 
+			classifier instead of the attention mechanism (Figure~\ref{fig:baseline}). This allows for a direct evaluation of the achievable instance-level
+			separation under a supervised approach and gives an upper bound for the possible separation performance.
+			The model is trained with the same hyperparameters as the other models, but with a batch size of 32 and a learning rate of $10^{-3}$ for 50 epochs. 
+			The main evaluation metric is the AUC, which is calculated on the test set of the annotated patches. 
 
 		\subsection{Evaluation protocoll}
 			% -Problem with the model optimaization on the testset, this leads to an optimism componten because im selectig models based on the best results on the testset and then evaluate every next model also on the testset
 			% - This leads to a model that is selected for test noise, and might not be optimal overall
 			% - Should have selected on validation results but the multiple seed help somehow
-
-		\subsection{Cluster structure and hardware}
 
 	\section{Experiments and results}
 		The experiments and their results are presented chronologically. This structure was chosen to make the thesis more readable and to allow the reader 
