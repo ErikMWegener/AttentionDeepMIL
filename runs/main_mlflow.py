@@ -5,7 +5,9 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import argparse
+import math
 import tempfile
+import traceback
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -60,6 +62,52 @@ GRAYSCALE_REFERENCES = {
 # ══════════════════════════════════════════════════════════════════════════════
 # Shared helpers
 # ══════════════════════════════════════════════════════════════════════════════
+
+# Pro Run gesammelte, weil nicht-endliche, uebersprungene Metrik-Keys
+_SKIPPED_METRICS = {}
+
+
+def _finite(value):
+    """True, wenn ``value`` als MLflow-Metrik taugt (Zahl und endlich)."""
+    if value is None or isinstance(value, bool):
+        return False
+    if torch.is_tensor(value):
+        value = value.item()
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def log_metrics_safe(metrics, **kwargs):
+    """``mlflow.log_metrics``, das NaN/Inf ueberspringt statt den Run zu killen.
+
+    Eine NaN-Metrik (z.B. ``counting_r2`` bei konstanter Vorhersage) loest im
+    sqlite-Backend einen ``IntegrityError`` aus, der sonst den ganzen Seed
+    abbricht. Die Werte selbst bleiben unveraendert - dieser Filter aendert
+    nichts am Training und nichts an bereits geloggten Runs.
+    """
+    clean = {k: float(v.item() if torch.is_tensor(v) else v)
+             for k, v in metrics.items() if _finite(v)}
+    skipped = sorted(set(metrics) - set(clean))
+    if skipped:
+        print(f"Warnung: nicht-endliche Metriken uebersprungen: {skipped}")
+        try:
+            run = mlflow.active_run()
+            if run is not None:
+                seen = _SKIPPED_METRICS.setdefault(run.info.run_id, set())
+                seen.update(skipped)
+                mlflow.set_tag("skipped_metrics", ",".join(sorted(seen))[:5000])
+        except Exception:            # Tag ist Diagnose, nie ein Grund zu scheitern
+            pass
+    if clean:
+        mlflow.log_metrics(clean, **kwargs)
+
+
+def log_metric_safe(key, value, **kwargs):
+    """Einzelne Metrik loggen, sofern sie endlich ist."""
+    log_metrics_safe({key: value}, **kwargs)
+
 
 def binarize_instance_labels(labels):
     """Map instance labels to a binary positive/negative encoding.
@@ -548,7 +596,7 @@ def compute_train_positive_fraction(train_loader):
 
     p_train = float(np.mean(pos_fracs))
     print(f'Baseline-Positiv-Anteil p_train = {p_train:.3f}')
-    mlflow.log_metric('count_baseline_p_train', p_train)
+    log_metric_safe('count_baseline_p_train', p_train)
     return p_train
 
 
@@ -563,7 +611,7 @@ def _log_grayscale_metrics(model, epoch):
         return
 
     w = gray.normalized_weights()               # tensor([r, g, b])
-    mlflow.log_metrics({
+    log_metrics_safe({
         "gray_w_r": w[0].item(),
         "gray_w_g": w[1].item(),
         "gray_w_b": w[2].item(),
@@ -571,7 +619,7 @@ def _log_grayscale_metrics(model, epoch):
 
     # Cosine similarity to reference conversions -> "which index it's similar to"
     sims = {k: F.cosine_similarity(w, v, dim=0).item() for k, v in GRAYSCALE_REFERENCES.items()}
-    mlflow.log_metrics({f"gray_cos_{k}": s for k, s in sims.items()}, step=epoch)
+    log_metrics_safe({f"gray_cos_{k}": s for k, s in sims.items()}, step=epoch)
 
 
 def train_one_epoch(ctx, epoch):
@@ -623,11 +671,11 @@ def train_one_epoch(ctx, epoch):
     train_bag_loss /= len(ctx.train_loader)
 
     # ── MLflow logging ────────────────────────────────────────────────────────
-    mlflow.log_metric('train_loss', train_loss, step=epoch)
-    mlflow.log_metric('train_error', train_error, step=epoch)
+    log_metric_safe('train_loss', train_loss, step=epoch)
+    log_metric_safe('train_error', train_error, step=epoch)
     if ctx.is_clam:
-        mlflow.log_metric('train_bag_loss', train_bag_loss, step=epoch)
-        mlflow.log_metric('train_instance_loss', train_inst_loss, step=epoch)
+        log_metric_safe('train_bag_loss', train_bag_loss, step=epoch)
+        log_metric_safe('train_instance_loss', train_inst_loss, step=epoch)
         print('Epoch: {}, Loss: {:.4f} (bag {:.4f} / inst {:.4f}), Train error: {:.4f}'.format(
             epoch, train_loss, train_bag_loss, train_inst_loss, train_error))
     else:
@@ -721,7 +769,7 @@ def validate(ctx, epoch):
         epoch, val_loss, val_error, metrics['auc']))
 
     # ── MLflow logging ────────────────────────────────────────────────────────
-    mlflow.log_metrics({
+    log_metrics_safe({
         "val_loss": val_loss,
         "val_error": val_error,
         "val_accuracy": metrics['accuracy'],
@@ -738,7 +786,7 @@ def validate(ctx, epoch):
     if ctx.is_clam and len(val_inst_labels) > 0:
         quantiles = calculate_score_quantiles(val_inst_scores, val_inst_labels)
         # Skip NaN entries (no positive resp. negative instances present)
-        mlflow.log_metrics(
+        log_metrics_safe(
             {f'val_inst_{k}': v for k, v in quantiles.items() if not np.isnan(v)},
             step=epoch)
 
@@ -772,7 +820,7 @@ def _calibrate_count_threshold(ctx):
 
     print(f'Zaehl-Threshold auf Val kalibriert: thr={thr:.2f} '
           f'(Val-Bias={val_bias:+.2f}, Val-MAE={val_mae:.2f})')
-    mlflow.log_metrics({'count_calibrated_threshold': thr,
+    log_metrics_safe({'count_calibrated_threshold': thr,
                         'count_calibrated_val_bias': val_bias,
                         'count_calibrated_val_mae': val_mae})
 
@@ -897,12 +945,21 @@ def _log_patch_level_metrics(ctx, buf, results, metrics):
         attention_converted = [1 if buf.all_attention_weights[i] > buf.all_thresholds[i] else 0
                                for i in range(len(buf.all_attention_weights))]
 
-        conv_patch_auc = roc_auc_score(instance_labels, attention_converted)
-        patch_auc = roc_auc_score(instance_labels, buf.all_attention_weights)
+        # roc_auc_score wirft ValueError, wenn nur eine Klasse vertreten ist
+        # (Testsplit ohne positive Bags). Analog zum CLAM-Zweig absichern,
+        # statt den Seed daran abbrechen zu lassen.
+        if len(set(instance_labels.tolist())) > 1:
+            conv_patch_auc = roc_auc_score(instance_labels, attention_converted)
+            patch_auc = roc_auc_score(instance_labels, buf.all_attention_weights)
+        else:
+            conv_patch_auc = float('nan')
+            patch_auc = float('nan')
+            print('Patch-Level AUC: nur eine Instanz-Klasse im Testsplit, '
+                  'AUC nicht berechenbar')
         patch_precision = precision_score(instance_labels, attention_converted, zero_division=0)
         patch_recall = recall_score(instance_labels, attention_converted, zero_division=0)
 
-        mlflow.log_metrics({
+        log_metrics_safe({
             'patch_level_auc': patch_auc,
             'patch_level_precision': patch_precision,
             'patch_level_recall': patch_recall,
@@ -925,7 +982,7 @@ def _log_patch_level_metrics(ctx, buf, results, metrics):
         patch_precision = precision_score(inst_labels_arr, inst_preds, zero_division=0)
         patch_recall = recall_score(inst_labels_arr, inst_preds, zero_division=0)
 
-        mlflow.log_metrics({
+        log_metrics_safe({
             'patch_level_auc': patch_auc,
             'patch_level_precision': patch_precision,
             'patch_level_recall': patch_recall,
@@ -959,10 +1016,8 @@ def _log_counting_metrics(ctx, buf, results, metrics):
 
     # ── Metrics ───────────────────────────────────────────────────────────────
     counting_metrics = calculate_counting_metrics(clean_truth, clean_pred)
-    metrics['counting_accuracy'] = counting_metrics['counting_accuracy']
-    metrics['counting_mae'] = counting_metrics['counting_mae']
-    metrics['counting_rmse'] = counting_metrics['counting_rmse']
-    mlflow.log_metric('counting_accuracy', counting_metrics['counting_accuracy'])
+    metrics.update(counting_metrics)
+    log_metric_safe('counting_accuracy', counting_metrics['counting_accuracy'])
 
     results["count_truth"].extend(clean_truth)
     results["count_pred"].extend(clean_pred)
@@ -981,11 +1036,15 @@ def _log_counting_metrics(ctx, buf, results, metrics):
     mlflow.log_figure(fig, "counting_plot.png")
     plt.close(fig)
 
-    mlflow.log_metrics({"count_mae": counting_metrics['counting_mae'],
-                        "count_rmse": counting_metrics['counting_rmse']})
-    print('Counting Accuracy: {:.4f}, MAE: {:.4f}, RMSE: {:.4f}'.format(
+    log_metrics_safe({"count_mae": counting_metrics['counting_mae'],
+                        "count_rmse": counting_metrics['counting_rmse'],
+                        "count_bias": counting_metrics['counting_bias'],
+                        "count_r2": counting_metrics['counting_r2'],
+                        "count_mape": counting_metrics['counting_mape']})
+    print('Counting Accuracy: {:.4f}, MAE: {:.4f}, RMSE: {:.4f}, Bias: {:.4f}, R2: {:.4f}, MAPE: {:.4f}'.format(
         counting_metrics['counting_accuracy'], counting_metrics['counting_mae'],
-        counting_metrics['counting_rmse']))
+        counting_metrics['counting_rmse'], counting_metrics['counting_bias'],
+        counting_metrics['counting_r2'], counting_metrics['counting_mape']))
 
 
 def _evaluate_count_thresholds(ctx, buf, metrics):
@@ -1009,14 +1068,14 @@ def _evaluate_count_thresholds(ctx, buf, metrics):
     for thr in COUNT_SWEEP_THRESHOLDS:
         bias, mae = CLAM.counting_scores_per_bag(buf.scores_per_bag, buf.true_counts, thr, pred_pos=gate)
         print(f"  thr={thr:.2f}  Bias={bias:+.2f}  MAE={mae:.2f}")
-        mlflow.log_metric("count_sweep_bias", bias, step=int(thr * 100))
-        mlflow.log_metric("count_sweep_mae", mae, step=int(thr * 100))
+        log_metric_safe("count_sweep_bias", bias, step=int(thr * 100))
+        log_metric_safe("count_sweep_mae", mae, step=int(thr * 100))
 
     # ── 2) Per-bag Otsu (gated) ───────────────────────────────────────────────
     otsu_bias, otsu_mae = CLAM.counting_scores_otsu(buf.scores_per_bag, buf.true_counts, pred_pos=gate)
     print(f"  Otsu (per-bag)  Bias={otsu_bias:+.2f}  MAE={otsu_mae:.2f}")
-    mlflow.log_metric("count_otsu_bias", otsu_bias)
-    mlflow.log_metric("count_otsu_mae", otsu_mae)
+    log_metric_safe("count_otsu_bias", otsu_bias)
+    log_metric_safe("count_otsu_mae", otsu_mae)
     metrics['count_otsu_mae'] = otsu_mae
 
     # ── 3) Global threshold, bias-calibrated on validation (val + test gated) ─
@@ -1031,9 +1090,9 @@ def _evaluate_count_thresholds(ctx, buf, metrics):
         test_bias, test_mae = CLAM.counting_scores_per_bag(
             buf.scores_per_bag, buf.true_counts, cal_thr, pred_pos=gate)
         print(f"  Kalibriert (thr={cal_thr:.2f} aus Val)  Test-Bias={test_bias:+.2f}  Test-MAE={test_mae:.2f}")
-        mlflow.log_metric("count_calibrated_threshold", cal_thr)
-        mlflow.log_metric("count_calibrated_bias", test_bias)
-        mlflow.log_metric("count_calibrated_mae", test_mae)
+        log_metric_safe("count_calibrated_threshold", cal_thr)
+        log_metric_safe("count_calibrated_bias", test_bias)
+        log_metric_safe("count_calibrated_mae", test_mae)
         metrics['count_calibrated_threshold'] = cal_thr
         metrics['count_calibrated_mae'] = test_mae
     else:
@@ -1043,8 +1102,8 @@ def _evaluate_count_thresholds(ctx, buf, metrics):
     if args.soft_counting:
         soft_bias, soft_mae = CLAM.counting_scores_soft(buf.scores_per_bag, buf.true_counts, pred_pos=gate)
         print(f"  Soft-Count (Sum P, gegatet)  Bias={soft_bias:+.2f}  MAE={soft_mae:.2f}")
-        mlflow.log_metric("count_soft_bias", soft_bias)
-        mlflow.log_metric("count_soft_mae", soft_mae)
+        log_metric_safe("count_soft_bias", soft_bias)
+        log_metric_safe("count_soft_mae", soft_mae)
         metrics['count_soft_mae'] = soft_mae
 
     # ── 5) Trivial baseline estimator: fixed fraction p_train * N (ungated) ───
@@ -1054,8 +1113,8 @@ def _evaluate_count_thresholds(ctx, buf, metrics):
         base_bias = float((pred - true).mean())
         base_mae = float(np.abs(pred - true).mean())
         print(f"  Baseline (p={ctx.p_train:.2f} * N)  Bias={base_bias:+.2f}  MAE={base_mae:.2f}")
-        mlflow.log_metric("count_baseline_bias", base_bias)
-        mlflow.log_metric("count_baseline_mae", base_mae)
+        log_metric_safe("count_baseline_bias", base_bias)
+        log_metric_safe("count_baseline_mae", base_mae)
         metrics['count_baseline_mae'] = base_mae
 
 
@@ -1083,7 +1142,7 @@ def test(ctx, results):
     # ── Patch-level metrics ───────────────────────────────────────────────────
     _log_patch_level_metrics(ctx, buf, results, metrics)
 
-    mlflow.log_metrics({"test_loss": buf.test_loss,
+    log_metrics_safe({"test_loss": buf.test_loss,
                         "test_error": buf.test_error,
                         "accuracy": metrics['accuracy'],
                         "precision": metrics['precision'],
@@ -1158,16 +1217,23 @@ def log_aggregated_metrics(all_metrics):
         return
 
     print("\nAggregating metrics across seeds...")
-    metrics_keys = all_metrics[0].keys()
+    # Vereinigung statt all_metrics[0]: fehlt ein Key im ersten Seed (z.B.
+    # patch_level_auc ohne positive Bags), ginge er sonst fuer alle verloren.
+    metrics_keys = sorted({k for m in all_metrics for k in m})
 
     for key in metrics_keys:
-        values = [m[key] for m in all_metrics if key in m]
+        # Nicht-endliche Einzelwerte wuerden Mean und Std vergiften.
+        values = [float(m[key]) for m in all_metrics if key in m and _finite(m[key])]
         if values:
             mean_value = np.mean(values)
             std_value = np.std(values)
-            mlflow.log_metric(f'{key}_mean', mean_value)
-            mlflow.log_metric(f'{key}_std', std_value)
-            print(f"{key}: Mean = {mean_value:.4f}, Std = {std_value:.4f}")
+            median_value = np.median(values)
+            log_metric_safe(f'{key}_mean', mean_value)
+            log_metric_safe(f'{key}_std', std_value)
+            log_metric_safe(f'{key}_median', median_value)
+            log_metric_safe(f'{key}_n_seeds', len(values))
+            print(f"{key}: Mean = {mean_value:.4f}, Std = {std_value:.4f}, "
+                  f"Median = {median_value:.4f} (n={len(values)})")
 
 
 def log_aggregated_counting_plot(results):
@@ -1282,10 +1348,10 @@ def run_full_image_eval(model, args):
 
     df = pd.concat([cal_df, test_df], ignore_index=True)
 
-    metrics = {'full_image_n': float(len(cal_df)),
-               'full_image_out_of_grid': float(cal_df['out_of_grid'].sum()),
-               'full_image_n': float(len(test_df)),
-               'full_image_out_of_grid': float(test_df['out_of_grid'].sum())}
+    metrics = {'cal_n': float(len(cal_df)),
+               'cal_out_of_grid': float(cal_df['out_of_grid'].sum()),
+               'test_n': float(len(test_df)),
+               'test_out_of_grid': float(test_df['out_of_grid'].sum())}
 
     # ── Bild-Level: Zaehlfehler fuer hard und soft count ──────────────────────
     for col in ('hard_count', 'soft_count'):
@@ -1312,12 +1378,12 @@ def run_full_image_eval(model, args):
     cal_scores = np.concatenate(cal_df['patch_signals'].to_list())
     cal_labels = (np.concatenate(cal_df['points_per_patch'].to_list()) > 0).astype(int)
     if cal_labels.min() != cal_labels.max():
-        metrics['full_image_patch_auc'] = float(roc_auc_score(cal_labels, cal_scores))
+        metrics['cal_patch_auc'] = float(roc_auc_score(cal_labels, cal_scores))
 
     test_scores = np.concatenate(test_df['patch_signals'].to_list())
     test_labels = (np.concatenate(test_df['points_per_patch'].to_list()) > 0).astype(int)
     if test_labels.min() != test_labels.max():
-        metrics['full_image_patch_auc'] = float(roc_auc_score(test_labels, test_scores))
+        metrics['test_patch_auc'] = float(roc_auc_score(test_labels, test_scores))
 
     # ── Kalibrierung und Plots ────────────────────────────────────────────────
     if len(df) < 3:
@@ -1341,7 +1407,7 @@ def run_full_image_eval(model, args):
                 mlflow.log_figure(fig, f"{kind}_{count_col}.png")
                 plt.close(fig)
 
-    mlflow.log_metrics(metrics)
+    log_metrics_safe(metrics)
     for key, value in metrics.items():
         print(f"  {key}: {value:.4f}")
 
@@ -1503,33 +1569,56 @@ def main():
         all_feature_data = []   # H, A, bag_lbls, inst_lbls and seed_ids of every seed
         results = init_results_container(args, log_instance_scores)
 
-        try:
-            if args.full_image_only:
-                # ── Nur Ganzbild-Auswertung, flach im Parent Run ──────────────
+        if args.full_image_only:
+            # ── Nur Ganzbild-Auswertung, flach im Parent Run ──────────────
+            try:
                 model_tags = run_full_image_only(args)
-                mlflow.set_tags(model_tags)
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                mlflow.log_param('error_message', str(e))
+                mlflow.set_tags({"status": "failed"})
             else:
-                # ── Iterate over each seed ────────────────────────────────────
-                for seed in args.seeds:
+                mlflow.set_tags(model_tags)
+        else:
+            # ── Iterate over each seed ────────────────────────────────────
+            # Ein defekter Seed darf die uebrigen Seeds und die Aggregation
+            # nicht mitreissen, deshalb wird jeder Seed einzeln abgesichert.
+            failed_seeds = []
+            for seed in args.seeds:
+                try:
                     model_tags = run_seed(args, seed, results, all_metrics,
                                           all_feature_data, log_instance_scores)
+                except Exception as e:
+                    failed_seeds.append(seed)
+                    print(f"An error occurred during seed {seed}: {e}")
+                    traceback.print_exc()
+                    mlflow.log_param(f'error_message_seed_{seed}', str(e)[:5000])
+                    mlflow.set_tags({f"seed_{seed}_status": "failed"})
 
-                # ── Logging in parent run after all seeds have been processed ─
-                mlflow.log_table(results, artifact_file="aggregated_run_results.json")
+            # ── Logging in parent run after all seeds have been processed ─
+            mlflow.set_tags({"seeds_completed": len(args.seeds) - len(failed_seeds),
+                             "seeds_failed": len(failed_seeds)})
+            if all_metrics:
+                # Zuerst die Zahlen: die Aggregation ist das Ergebnis des Runs.
                 mlflow.set_tags(model_tags)
-
                 log_aggregated_metrics(all_metrics)
-                log_aggregated_counting_plot(results)
-
-                if args.visualize_features:
-                    log_aggregated_feature_plot(all_feature_data)
-
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            mlflow.log_param('error_message', str(e))
-            mlflow.set_tags({"status": "failed"})
-        else:
-            mlflow.set_tags({"status": "completed"})
+                # Artefakte sind Beiwerk - ein Fehler beim Plotten oder beim
+                # Schreiben der Tabelle darf die Aggregation nicht entwerten.
+                for name, fn in (("aggregated_run_results.json",
+                                  lambda: mlflow.log_table(
+                                      results, artifact_file="aggregated_run_results.json")),
+                                 ("counting_plot", lambda: log_aggregated_counting_plot(results)),
+                                 ("feature_plot", lambda: log_aggregated_feature_plot(all_feature_data)
+                                  if args.visualize_features else None)):
+                    try:
+                        fn()
+                    except Exception as e:
+                        print(f"Artefakt '{name}' konnte nicht geschrieben werden: {e}")
+                        mlflow.set_tags({f"artifact_{name}_failed": "true"})
+                mlflow.set_tags({"status": "partial" if failed_seeds else "completed"})
+            else:
+                print("No metrics collected across seeds; skipping aggregation.")
+                mlflow.set_tags({"status": "failed"})
 
 
 if __name__ == '__main__':
