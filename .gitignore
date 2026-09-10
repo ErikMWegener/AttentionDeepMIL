@@ -50,6 +50,7 @@ runs/run_greedy.sh
 runs/run_synth.sh
 models/state_dicts/
 tex/masterarbeit/tikz/
+tex/masterarbeit/figures/
 tex/masterarbeit/masterarbeit.pdf
 full_image_results.json
 runs/run_cluster.sh
@@ -64,3 +65,12 @@ data/data_management/drone_bags.h5
 build.log
 runs/mlflow_res.zip
 .gitignore
+docs/
+eval/toolbox/
+tex/masterarbeit/masterarbeit.pdf
+runs/run_mnist_bags_sweep.sh
+eval/mnist_bag_sweep/
+Bewertung_Kapitel3.md
+Kapitel3_Grundlagen_DE.docx
+eval/mlflow_toolbox.py
+tex/masterarbeit/masterarbeit.pdf
