@@ -105,7 +105,9 @@ def calculate_counting_metrics(count_truth, count_pred):
     counting_mae = mean_absolute_error(count_truth, count_pred)
     counting_rmse = np.sqrt(mean_squared_error(count_truth, count_pred))
     counting_bias = np.mean(count_pred - count_truth)
-    counting_r2 = np.corrcoef(count_truth, count_pred)[0, 1] ** 2 if len(count_truth) > 1 else float('nan')
+    ss_res = np.sum((count_truth - count_pred) ** 2)
+    ss_tot = np.sum((count_truth - count_truth.mean()) ** 2)
+    counting_r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float('nan')    
     counting_mape = np.mean(np.abs((count_truth - count_pred) / np.where(count_truth == 0, 1, count_truth))) * 100
 
     return {
