@@ -562,17 +562,18 @@ labelsep=space]{caption}
 			as a single bag. Instead, the patches are extracted from all images, pooled into positive and negative patches, and 
 			bags are created by randomly sampling from the pools. This results in a three-step process for the bag creation shown in Figure~\ref{fig:bag_creation}. 
 			The bag creation follows the same process for all datasets, but the patch generation differs depending on the annotations available
-			in the underlying image dataset. The following sections describe the datasets, the patch generation and bag generation in more detail.
+			in the underlying image dataset. The only exception for this process is the image inference in Section~\ref{sec:img_infer}, where the test bags are 
+			generated per image. The following sections describe the datasets, the patch generation and bag generation in more detail.
 			
 
 			\begin{figure}[t]
 				\centering
 				\includegraphics[width=0.92\textwidth]{tikz/bag_creation.pdf}
 				\caption{\textbf{Bag creation process} --- (1) image dataset choice, (2) patch generation and pooling 
-			and (3) bag creation}
+			and (3) bag creation \textcolor{red}{Englisch übersetzen - N(100,20) ist keine Varianz sonder Standardabweichung}}
 				\label{fig:bag_creation}
 			\end{figure}
-
+			
 			\begin{table}[b]
 				\centering
 				\footnotesize
@@ -580,7 +581,7 @@ labelsep=space]{caption}
 					\toprule
 					Dataset & Year & Location & Ears & Images & Annotation & Resolution \\
 					\midrule
-					GWHD & 2021 & 12 countries & Yes & 6.300 & Bounding boxes & 1024x1024\\
+					GWHD & 2021 & 12 countries & Yes & 6,400 & Bounding boxes & 1024x1024\\
 					Drone\_annot & 2025 & ? & Yes & 173 & Point & 1024x1024\\
 					Drone\_BBG\_1 & 2026-05-26 & Bernburg & No &  88 & --- & 5280×3956\\
 					Drone\_BBG\_2 & 2026-06-08 & Bernburg & Yes &  88 & --- & 5280×3956\\
@@ -641,8 +642,8 @@ labelsep=space]{caption}
 				For the detection and counting of wheat ears, the Global Wheat Head Detection (GWHD) dataset 
 				\cite{davidGlobalWheatHead2021} is the most comprehensive publicly available dataset. 
 				It was created to address the lack of large, diverse datasets for wheat head detection and counting, which are essential 
-				for developing robust machine learning models. The GWHD dataset contains around 6,300 images taken at ground level with 275,187 wheat ears annotated with bounding 
-				boxes from 16 institutions, capturing a wide range of wheat varieties, growth stages, lighting conditions, and camera angles. 
+				for developing robust machine learning models. The GWHD dataset contains around 6,400 images taken at ground level with 275,187 wheat ears annotated with bounding 
+				boxes from 12 countries, capturing a wide range of wheat varieties, growth stages, lighting conditions, and camera angles. 
 				This diversity makes it an ideal benchmark for evaluating the performance of different detection and counting methods. 
 				Additionally, the annotations allow the counting performance of the developed method to be evaluated on a large dataset without annotating a new one.
 				The first of two problems posed by this dataset is that
@@ -652,7 +653,7 @@ labelsep=space]{caption}
 				task. Therefore, new splits were created where each split received a distinct percentage of the patch pools relative to its bag number; the patch pools were also split to avoid data leakage.
 					
 			\subsubsection{Real drone images}
-				The drone images are split into two different datasets of images taken with ? form a height of 4 m. The first was collected in 2025 and contains 173 point-annotated images of wheat fields
+				The drone images are split into two different datasets of images taken with ? from a height of 4 m. The first was collected in 2025 and contains 173 point-annotated images of wheat fields
 				in the final growth stage just before harvest. Similarly to the GWHD images, the annotations allow for an instance-level evaluation of the counting performance.
 				The pre-existing train/val/test (83/20/70 images) splits were used, as there is no domain shift between the splits. The missing true-negative 
 				images required the same patch-pooling method as for GWHD, applied within the existing splits, with the positive patches defined by the point annotations.
@@ -673,8 +674,9 @@ labelsep=space]{caption}
 		
 		\subsection{Patch extraction \& labelling}
 			The patch definition process varies depending on the annotation type of the images. For images with \texttt{Bounding boxes}, the positive patches
-			were defined by centring a regular grid of patches on each bounding box, ensuring that each patch in the grid fulfilled the minimum overlap
-			requirement with the bounding box (default: 100\% of the patch in the bounding box). For images with \texttt{point annotations} each annotation resulted in exactly one positive patch centred on the point.
+			were defined by centring a regular grid of patches on each bounding box. For each bounding box at least one positive patch is defined. Multiple patches 
+			can be defined only when the requirement of a minimum overlap of each patch in
+			the bounding box (default: 100\%). For images with \texttt{point annotations} each annotation resulted in exactly one positive patch centred on the point.
 			For the \texttt{time-dependent} drone images, the positive patches were cut on a regular grid from the positive images.
 			Negative patches were generally defined by a regular grid of determined patch size on either true-negative images or on positive images, under the constraint of 
 			no overlap with any annotation. Before saving the patches into the bags, they were converted to grayscale using the standard conversion formula to 
@@ -696,12 +698,16 @@ labelsep=space]{caption}
 			% \end{figure}
 		
 		\subsection{Bag construction}
-			The bag construction process is identical for all datasets. Half of the bags of each split were created with a positive label and the other half with a negative label.
-			The mean bag length was set to 100 with a variance of 20. The patches for each bag were randomly sampled from separate positive and negative patch
-			pools for each split to avoid data leakage. The number of positive patches in the positive bags was uniformly sampled between 1 and the bag length (mean $\approx 50$) 
-			to simulate	the natural variance in the number of ears per image. The standard bag split was 1000/200/200 for train/val/test.
+			The bag construction process is identical for almost all datasets. Half of the bags of each split were created with a positive label and the other half with a negative label.
+			The mean bag length was set to 100 with a standard deviation of 20. The patches for each bag were randomly sampled from separate positive and negative patch
+			pools for each split to avoid data leakage. The number of positive patches in the positive bags was uniformly sampled between 1 and the bag length (mean $\approx 50$), 
+			to cover the whole range of densities evenly and test the model across all of them.
+			The standard bag split was 1000/200/200 for train/val/test.
 			Because the number of images was sufficient and the purpose of this thesis was to test the general feasibility of the method, no data augmentation was applied.
-
+			
+			For creating bags per image, each image is cut into patches of predetermined size along a regular grid. 
+			Patch labels for instance-level and counting evaluation are given assigned based on the 
+			already established overlap ruling with the annotations if given.
 		\begin{table}[t]
 				\centering
 				\begin{tabular}{@{}lccc@{}}
@@ -754,17 +760,17 @@ labelsep=space]{caption}
 			with the idea that the primary counting goal can be achieved by first counting the positive patches and then converting this 
 			number into a wheat-ear count. However, for the conversion to be possible, the performance of the secondary counting goal
 			needs to be as good as possible, which is the main focus of the experiments. Throughout the thesis, metrics for both counting goals are reported;
-			metrics regarding the primary goal are denoted as $c_{\text{ear}}$ and metrics regarding the secondary goal are denoted as $c_{\text{patch}}$.
+			metrics results regarding the primary goal are denoted as metric$_{\text{ear}}$ and metrics regarding the secondary goal are denoted as metric$_{\text{patch}}$.
 
 			The counting for the secondary goal is done by a thresholding mechanism on the attention weights or instance scores.
-			The threshold is either a fixed value or determined by later defined methods. Positve patch counts are then obtained 
-			by counting the number of attention weights or instance scores above the threshold.
+			The threshold $\theta$ is either a fixed value or determined by later defined methods. Positve patch counts are then obtained 
+			by counting the number of attention weights or instance scores above the threshold: $\hat{c}_patch = \sum_k 1_{a_k>\theta}$.
 
 			The primary counting goal would be equivalent to the secondary counting goal, if it were possible to define the patches 
 			such that each patch contains exactly one wheat ear.
 			Because of the dense tillering of the wheat plants and the resulting density of the ears, this is not possible.
 			The conversion has to be calibrated to find a function that maps the number of positive patches to the number of wheat ears. The two
-			tested functions are a linear and an isotonic function. The linear function is defined as $c_{\text{ear}} = \alpha\,c_{\text{patch}} + \beta$, where 
+			tested functions are a linear and an isotonic function \cite{isotonic}. The linear function is defined as $c_{\text{ear}} = \alpha\,c_{\text{patch}} + \beta$, where 
 			$\alpha$ and $\beta$ are the parameters of the function. The isotonic function is a non-parametric function that is fitted to the data 
 			using isotonic regression. Both functions are fitted on the validation set and then applied to the test set, using datasets with three
 			different patch sizes (32, 64, 128) to find the best-performing patch size for the counting task. The best-performing patch size is 
@@ -778,7 +784,7 @@ labelsep=space]{caption}
 				the number of positive patches in a bag. Additional modifications were made to the backbone and the attention mechanism to 
 				improve the counting performance of the model (Figure~\ref{fig:mod_attmil}). Both the gated and ungated attention mechanisms were tested.
 
-				The modifications to the backbone are the addition of GroupNorm layers after each convolutional layer to stabalise the 
+				The modifications to the backbone are the addition of GroupNorm \cite{groupnorm} layers after each convolutional layer to stabalise the 
 				training process, a third convolutional layer to increase the capacity of the feature extractor, and a dropout layer 
 				to prevent overfitting. GroupNorm was chosen instead of BatchNorm because of the limitation of one bag per batch. These 
 				modifications were aimed at increasing the complexity of the model to allow for better learning of the intricate
@@ -790,7 +796,7 @@ labelsep=space]{caption}
 				is spread more thinly with increasing bag length, increasing the difficulty of separating the positive and negative patches 
 				because their weights are closer together. Additionally, positive patches compete with each other for the attention weights,
 				which can lead to a normalisation-saturation problem where strong positive patches are weighted too thin, causing other positives to fall below the threshold.
-				This problem grows with bag length and number of positive patches. Sparsemax and entmax are two alternatives to softmax
+				This problem grows with bag length and number of positive patches. Sparsemax \cite{sparsemax} and entmax\cite{entmax} are two alternatives to softmax
 				that are designed to mitigate these problems. Both also project into the probability simplex and all weights sum to one,
 				but allow for sparse solutions, where unimportant patches assigned zero weight. Entmax is a generalisation of softmax and sparsemax,
 				where the degree of sparsity can be controlled by a parameter $\alpha$. For $\alpha=1$, entmax is equivalent to softmax, for $\alpha=2$ 
@@ -801,13 +807,12 @@ labelsep=space]{caption}
 				The sigmoid function maps the weights to the range of $[0,1]$ and min-max rescales the weights linearly to the range of $[0,1]$. 
 				Both methods allow for a more direct separation of the positive and negative patches, but are more sensitive to outliers and the distribution of the weights. 
 				The sigmoid function is more robust to outliers, while min-max normalisation is more sensitive to them. 
-				The problem of the lost permutation- and size-invariance due to the lack of normalisation to a sum of one is addressed by the $K$-scaling, 
-				which is applied after the attention mechanism. This is done by dividing each attention weight by the average attention weight and then applying 
-				LayerNorm, ensuring that the weights are properly scaled even though they do not sum to one.
+				The problem of the lost size-invariance due to the lack of normalisation to a sum of one is addressed by dividing each attention weight
+				by the average attention weight and then applying LayerNorm \cite{layernorm}, ensuring that the weights are properly scaled even though they do not sum to one.
 
 
 				The standard counting threshold for the attention weights differs between the activation functions. Softmax uses the average attention 
-				weight of $1/K$ as the threshold, sparsemax and entmax use 0.0 as default and sigmoid and min-max use the Otsu method 
+				weight of $1/K$ as the threshold, sparsemax and entmax use 0.0 as default and sigmoid and min-max use the Otsu method \cite{otsu}
 				to find the optimal threshold for each bag. The Otsu method is a simple and effective way of finding the optimal threshold for a given distribution of values. 
 				It works by maximising the between-class variance of the two classes (positive and negative patches) in the distribution, 
 				which is equivalent to minimising the within-class variance. This results in a threshold that separates the two classes as well as possible. 
@@ -817,7 +822,7 @@ labelsep=space]{caption}
 					\mathcal{L} = -\left[Y\log \hat{p} + (1-Y)\log(1-\hat{p})\right] 
 				\end{align*}
 				with $\hat{p}$ clamped to $[10^{-5},1-10^{-5}]$. Class weighting is not needed because the bag labels are balanced at 50/50 
-				between positive and negative bags. The loss is backpropagated using the Adam optimiser with a standard learning rate of $10^{-4}$ and 
+				between positive and negative bags. The loss is backpropagated using the Adam optimiser \cite{adam} with a standard learning rate of $10^{-4}$ and 
 				a weight decay of $10^{-5}$. When using a pretrained backbone, its learning rate was reduced by a factor of 100.
 				
 				The variable bag length of some datasets is accounted for by the attention mechanism and the batch size of one bag. Through \textit{squeeze(0)}, the batch dimension is removed,
@@ -841,11 +846,12 @@ labelsep=space]{caption}
 			for the instance classifier, instead of the smooth Top-1 SVM loss of the original architecture. The full loss is
 			calculated as the weighted sum of the bag and instance-level losses, with the weight of each branch being set by the hyperparameter \textit{--bag\_weight}.
 			
-			The main differences from the original CLAM architecture are the use of the end-to-end trainable backbone from the attention-based MIL model instead of 
+			The main differences from the original CLAM architecture are the use of the end-to-end trainable default backbone from the attention-based MIL model --- 
+			the modifications of the backbone were not carried over to this model --- instead of 
 			the pretrained ResNet-50 and the use of a single branch for the attention mechanism and instance classifier instead of the multi-class variant, since the task is binary.
 			The goal of the additional instance-level task is to improve the separation of the positive and negative patches in the feature space
 			by forcing the model to directly learn the separation. With the additional learning signal, the backbone can learn 
-			more distinct features for the patches.
+			more distinct features for the patches. 
 
 			Because the CLAM-based architecture trains an instance classifier, counting can be done directly by thresholding the instance-level predictions instead of the attention
 			weights. This allows for a more direct counting of the positive patches, as the instance classifier is trained to directly predict the patch labels. The problem of the 
@@ -883,8 +889,7 @@ labelsep=space]{caption}
 			a hyperparameter search was conducted over the parameters \textit{--pos\_quantile}, \textit{--neg\_quantile} and \textit{--k\_sample}.
 
 		\subsection{Pipeline for learned grayscale conversion}
-			Early experiments on a dataset that used colour instead of grayscale images showed that the model performed worse on the colour images. In order to further 
-			investigate the possible impact of the colour information, a pipeline was added to the existing models that learns a grayscale conversion from the colour images.
+			In order to further investigate the possible impact of the colour information, a pipeline was added to the existing models that learns a grayscale conversion from the colour images.
 			The pipeline consists only of a 1$\times$1 convolutional layer over the colour channels, whose weights are learned during the training process. This way, the 
 			model chooses the optimal grayscale conversion for the task. The method used here is unconstrained --- the weights are not required to be non-negative or to sum to one --- 
 			which allows the learning of a difference-based contrast enhancement. This is considerably more expressive than a restrictive weighting.
@@ -893,7 +898,7 @@ labelsep=space]{caption}
 			and compared to the standard grayscale conversion weights to determine whether the model learned a different weighting of the colour channels.
 
 		\subsection{Feature visualisation}
-			In order to identify the reasons for the poor separation performance of the attention mechanism, the feature representations of the patches are
+			In order to analize the feature separation in the output of the backbone, the feature representations of the patches are
 			visualised using UMAP \cite{mcinnesUMAPUniformManifold2020} and color-coded by their true labels. The feature representations are extracted 
 			from the trained models for MNIST and the wheat datasets and compared to determine whether the poor separation performance is due to the feature representations 
 			or whether the problem lies within the data itself. Although the visualisation itself, being a non-linear, parameterised projection, is only illustrative
@@ -948,7 +953,7 @@ labelsep=space]{caption}
 			as described in the original publication by \textcite{ilseAttentionbasedDeepMultiple2018} was reproduced.
 			The MNIST dataset is a well-known dataset of handwritten digits 0 through 9, which is often used as a benchmark for
 			image classification tasks. The dataset contains 60,000 training images and 10,000 test images, each of size 28x28 pixels.
-			For this experiment, bags of mean lengths of 10, 50 and 100, with a variance of 2, 10 and 20 respectively were created in datasets
+			For this experiment, bags of mean lengths of 10, 50 and 100, with a standard deviation of 2, 10 and 20 respectively were created in datasets
 			of 50, 100, 150, 200, 300, 400 and 500 bags. The bags were created by randomly sampling the MNIST images and assigning a bag label
 			of positive if at least one of the images in the bag contained a digit of interest (e.g. digit '9') and negative otherwise. It was 
 			made sure that the datasets were balanced with an equal number of positive and negative bags. Due to the random sampling
