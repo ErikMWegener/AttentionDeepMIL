@@ -10,6 +10,8 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{microtype}
+% Disable font expansion because the document uses non-scalable fonts.
+\microtypesetup{expansion=false}
 \usepackage{float}
 \usepackage{geometry}
 \usepackage[none]{hyphenat}
@@ -46,7 +48,7 @@ labelsep=space]{caption}
 		Master Thesis\\
 		
 		\vspace{3cm}\Huge
-		Counting wheat ears on minimally annotated data using multiple instance learning
+		Counting wheat ears on minimally annotated data using Attention-MIL
 		
 		\vspace{6cm}\small\raggedright\normalfont
 		\begin{tabular}{ll}
@@ -62,13 +64,17 @@ labelsep=space]{caption}
 	\newpage
 	\tableofcontents
 	\newpage
+	\listoffigures
+	\newpage
+	\listoftables
+	\newpage
 	\thispagestyle{empty}
-	\section*{Declaration of Independence}
+	\section*{Declaration of Ownership}
 	
 	I hereby declare that I have written this paper independently, have used no sources or resources other than those cited,
 	 and have clearly identified any passages or ideas taken directly or indirectly from external sources. 
-	 While AI-tools like Claude and GitHub Copilot were used as support in reaserch, text correction and code generation
-	 the ideas and methods formed and created in this thesis are mine and I take full ownership and responsibilty.
+	 While AI-tools like Claude and GitHub Copilot were used as support in research, text correction and rephrasing and code generation
+	 the ideas and methods formed and created in this thesis are mine and I take full ownership and responsibility.
 	\vspace{4cm}
 	
 	\hspace{2cm} Ort, Datum \hfill Unterschrift \hspace{2cm}
@@ -143,7 +149,7 @@ labelsep=space]{caption}
 			ear-counting methods, which come with their own methodological difficulties.
 
 		\subsection{Annotation and counting challenges}
-			Grain ear counting is difficult for a multitude of partly related reasons. At its core lies the overall stand density. 
+			Whaet ear counting is difficult for a multitude of partly related reasons. At its core lies the overall stand density. 
 			Compared to other crops, cereals are sown more densly, with a density of 200 to 600 ears per square metre, leading to only partly visible ears in image patches \cite{xiongTasselNetv2InfieldCounting2019}.
 			These dense scenes are charaterised by strong occlusion and small object sizes leading to a difficult analysis. Occlusions stem from two sources: 
 			occlusion by objects that are not part of the scene and the mutual occlusion of similar objects. The latter is the core of the problem \cite{zhangApplicationsDeepLearning2020}. 
@@ -153,7 +159,7 @@ labelsep=space]{caption}
 			This overlap has a direct impact on the choice of method. Detection-based approaches typically rely on 
  			non-maximum suppression, which struggles to separate objects that overlap heavily \cite{xiongTasselNetv2InfieldCounting2019}; as an alternative, regression-based counting 
 			methods have become established for dense, highly overlapping scenes \cite{madecEarDensityEstimation2019}. Nevertheless, regression is not without its limitations either: 
-			in cases of severe overlap and image blurring, significant underestimations occur, and the grain ears then become almost impossible to distinguish, even for human experts 
+			in cases of severe overlap and image blurring, significant underestimations occur, and the wheat ears then become almost impossible to distinguish, even for human experts 
  			\cite{xiongTasselNetv2InfieldCounting2019}.\\
 
 			This is compounded by the high variability of the target object. The colour, size and shape of wheat ears vary greatly and unevenly across the different stages of development, 
@@ -173,8 +179,8 @@ labelsep=space]{caption}
 			which are hardly feasible to generate given the typical number of objects in wheat images: a single image may contain more than 10,000 ears of wheat, 
 			which makes the annotation of bounding boxes nearly impossible \cite{xiongTasselNetv2InfieldCounting2019}. Even where deep-learning models in principle facilitate counting, 
 			the generation of training data remains very labour-intensive \cite{guoAerialImageryAnalysis2018}. This is precisely where the approach pursued in this work comes in: 
-			by using only bag-level count labels instead of instance-level annotations, the weakly supervised multiple instance learning approach circumvents 
-			the prohibitive annotation effort whilst remaining robust to the occlusion and density issues described. 
+			by using only binary bag-level labels instead of instance-level annotations, the weakly supervised multiple instance learning approach circumvents 
+			the prohibitive annotation effort and this thesis examines how far such labels can support counting under these conditions. 
 
 			\begin{figure}
 				\centering
@@ -195,22 +201,23 @@ labelsep=space]{caption}
 			% - Overlap, occlusion, size differences, different growth stages, different wheat varieties, different lighting conditions and different camera angles make the task even more difficult\
 			% - Manual counting is very time consuming and expensive\
 			% - Automated counting is very dependent on the quality and quantity of the annotations\
-		\subsection{Fully supervised approaches}
-			Fully supervised counting of grain ears organs can be divided into five methodological categories, which differ in annotation effort, output representation and robustness to occlusion.
+		
+			\subsection{Fully supervised approaches}
+			Fully supervised counting of wheat ear organs can be divided into five methodological categories, which differ in annotation effort, output representation and robustness to occlusion.
 			The first is the most widely spread family in the cereal domain and uses detection-based methods for counting. Objects are located by bounding boxes and the count is a by-product of detection.
 			\textcite{madecEarDensityEstimation2019} compared the Faster-R-CNN detector with the TasselNet regression network for ear density estimation 
 			from high-resolution RGB nadir (top-down) images and found that, under calibrated conditions, both approaches achieved a relative root-mean-square error of around six percent, 
 			although Faster-R-CNN remained more robust at advanced growth stages because the ears and background appear differently as the plants mature. 
-			For their Faster-R-CNN model, Madec et al. reported an average precision of 0.85, a relative RMSE of 5.3 per cent and a coefficient of determination of 0.91.
+			For their Faster-R-CNN model, Madec et al. reported an average precision of 0.85, a relative RMSE of 5.3 \% and a coefficient of determination of 0.91.
 			With the publication of the Global Wheat Head Detection dataset by \textcite{davidGlobalWheatHead2021}, detection-based wheat head recognition was standardised. In their 2023 pulication,
 			they analysed the winning models from the 2020 and 2021 Global Wheat Challenges \cite{davidGlobalWheatHead2020,davidGlobalWheatHead2021} --- predominantly EfficientDet and YOLO variants --- and reported that the 
-			winning solutions achieved an average domain accuracy of around 0.7, whilst the resulting estimate of the number of ears across all test data achieved a coefficient of determination of 
+			winning solutions achieved an average domain accuracy of around 0.7, while the resulting estimate of the number of ears across all test data achieved a coefficient of determination of 
 			$R^2$ = 0.814 with a relative RMSE of 0.185 \cite{davidGlobalWheatHead2023}. The authors themselves emphasise that this counting performance falls short of that achieved in specialised studies such as  
 			\textcite{madecEarDensityEstimation2019} (rRMSE = 0.06) and \textcite{sadeghi-tehranDeepCountInFieldAutomatic2019c} (rRMSE = 0.11).
-			More recent wheat-specific detectors are pushing these figures even further: YOLOv7-MA \cite{mengYOLOv7MAImprovedYOLOv7Based2023} achieves an average precision of 93.86 per cent on GWHD 2021 at 
-			35.93 frames per second, whilst the drone-optimised YOLOv8-FDA \cite{linYOLOv8FDALightweightWheat2025} combines an mAP@0.5 of 84.9 per cent with a model size of just 2.96 MB 
-			and a counting accuracy of over 97.5 per cent for cross-row segmentation. The advantage of detection-based methods lies in the additional localisation of each object; 
-			their disadvantage is the high annotation effort required for bounding boxes, as well as the decreasing accuracy in the case of dense, overlapping grain ears.
+			More recent wheat-specific detectors are pushing these figures even further: YOLOv7-MA \cite{mengYOLOv7MAImprovedYOLOv7Based2023} achieves an average precision of 93.86 \% on GWHD 2021 at 
+			35.93 frames per second, while the drone-optimised YOLOv8-FDA \cite{linYOLOv8FDALightweightWheat2025} combines an mAP@0.5 of 84.9 \% with a model size of just 2.96 MB 
+			and a counting accuracy of over 97.5 \% for cross-row segmentation. The advantage of detection-based methods lies in the additional localisation of each object; 
+			their disadvantage is the high annotation effort required for bounding boxes, as well as the decreasing accuracy in the case of dense, overlapping wheat ears.
 
 			The high annotation effort is heavily reduced when using point annotations instead of bounding boxes. The move from bounding boxes to point annotations was formulated by 
 			\cite{riberaLocatingObjectsBounding2019} with a weighted Hausdorff distance, a loss function that
@@ -224,17 +231,17 @@ labelsep=space]{caption}
 			map learnt from point annotations and introduced the MESA loss function, which can be efficiently computed using a maximum subarray algorithm. This paradigm was further developed 
 			in crowd counting by MCNN \cite{zhangSingleImageCrowdCounting2016} and, in particular, CSRNet \cite{liCSRNetDilatedConvolutional2018}; the latter achieves a mean absolute error of 68.2 on ShanghaiTech Part A using dilated 
 			convolutions and is frequently used as a baseline for wheat ear density maps. In agricultural image processing, the TasselNet family extended this concept to plant organs: 
-			whilst TasselNet \cite{luTasselNetCountingMaize2017} was developed for maize tassels, \textcite{xiongTasselNetv2InfieldCounting2019} extended it to wheat ears with TasselNetv2 using context-augmented local regression, 
-			achieving a counting accuracy of 91.01 per cent at 13.82 frames per second on the specially collected WSC dataset. Density mapping methods require only point annotations and 
+			while TasselNet \cite{luTasselNetCountingMaize2017} was developed for maize tassels, \textcite{xiongTasselNetv2InfieldCounting2019} extended it to wheat ears with TasselNetv2 using context-augmented local regression, 
+			achieving a counting accuracy of 91.01 \% at 13.82 frames per second on the specially collected WSC dataset. Density mapping methods require only point annotations and 
 			are more robust than detectors in conditions of high object density; however, they do not provide explicit object localisation.
 
 			The third family comprises segmentation-based approaches in which wheat ears are segmented on a pixel-by-pixel basis and subsequently counted.
-			SpikeSegNet \cite{misraSpikeSegNetaDeepLearning2020} uses an encoder-decoder network with an Hourglass architecture for this purpose, whilst \textcite{hasanDetectionAnalysisWheat2018} 
+			SpikeSegNet \cite{misraSpikeSegNetaDeepLearning2020} uses an encoder-decoder network with an Hourglass architecture for this purpose, while \textcite{hasanDetectionAnalysisWheat2018} 
 			employed region-based CNNs for ear detection and analysis under various fertilisation levels. Segmentation captures the object's shape precisely, 
 			but requires pixel-accurate masks and is therefore particularly labour-intensive in terms of annotation. 
 
 		 	The fourth family - direct count regression at the image level - dispenses entirely with spatial outputs: \textcite{riberaCountingPlantsUsing2017} regressed the number 
-			of plants directly from orthorectified field image sections and achieved a mean absolute percentage error of 6.7 per cent using an Inception-v3 architecture, 
+			of plants directly from orthorectified field image sections and achieved a mean absolute percentage error of 6.7 \% using an Inception-v3 architecture, 
 			and WheatLFANet \cite{yeWheatLFANetInfieldDetection2023} adopts a comparable global regression approach with high real-time performance. An instructive special case is WheatNet \cite{khakiHighthroughputImagebasedPlant2022}, 
 			which combines a truncated MobileNetV2 with a density and a localisation branch, requiring only point annotations; 
 			this places it methodologically between density regression and weak supervision. Overall, there is a trade-off between annotation effort and the information content of the output, 
@@ -242,14 +249,14 @@ labelsep=space]{caption}
 			splits and metrics.
 
 		\subsection{Weak supervision with Multiple Instance Learning}
-			Weak supervision is a machine learning paradigm that allows models to be trained with limited or imprecise labelled data. In the context of counting grain ears,
+			Weak supervision is a machine learning paradigm that allows models to be trained with limited or imprecise labelled data. In the context of counting wheat ears,
 			this means a spectrum of decreasing strength of annotation: from point annotations with just one point per object, through over image or bag-level count labels that only
 			give the total number of objects in an image, to only image-level class labels that only indicate the presence or absence of objects.
 
 			This kind of supervision is provided by Multiple Instance Learning (MIL), which the core of this thesis. In MIL an object is viewed as a
 			bag of instances and only this bag --- not the individual instances --- receives a label. \textcite{ilseAttentionbasedDeepMultiple2018} introduced a permutationinvariant attention-
 			poolingoperator that aggregates weighted instance embeddings into a bag embedding and makes the model interpretable through the attention
-			weights. Tested on two real histopathology datasets, they achieve test AUCs (Section~\ref{sec:3.5}) of up to 0.968. Since then, there have been several extensions and improvements to this architecture.
+			weights. Tested on two real histopathology datasets, they achieve test AUCs (Section~\ref{sec:metrics}) of up to 0.968. Since then, there have been several extensions and improvements to this architecture.
 			One of them is the work of \textcite{luDataEfficientWeakly2020}, in which they extended the principle with CLAM, a clustering-constrained Attention MIL. It combines attention to identify diagnostically
 			important subregions with instance-level clustering for a refined feature space, using only slide-level labels. For the subtyping of renal cell carcinoma, 
 			they report a macro-averaged AUC of 0.973. Both methods were developed for classification rather than for counting --- their application to 
@@ -294,12 +301,12 @@ labelsep=space]{caption}
 			relevant concept. Secondly, the threshold-based assumption assumes a positive bag when the number of positive instances exceeds a minimum. 
 			Finally, the count-based assumption stipulates both a minimum and a maximum number, and thus presupposes that it is not mere presence, but the number of instances belonging to the concept, 
 			that carries the information determining the label. The counting solution in this thesis explicitly relies soely on the standardized assumption, as the goal is to see what the maximum 
-			couting performance is that can be achieved with minimal annotation effort.
+			counting performance is that can be achieved with minimal annotation effort.
 
 			The other decision of importance when solving a MIL problem is how the discriminative information is modelled and aggregated. For the modelling \textcite{amoresMultipleInstanceClassification2013}
 			distinguishes here between an Instance Space paradigm, where a classifier is trained on the instance level whose outputs are aggregated to a bag level prediciton, and
 			an Embedded Space paradigm, where a bag is mapped to a single feature vector of fixed dimensions and used to train a standard classifier.
-			The former assumes that the relevant information can be traced back to individual instances, whilst the latter shift it to the aggregated bag representation.
+			The former assumes that the relevant information can be traced back to individual instances, while the latter shift it to the aggregated bag representation.
 			This distinction is important for the following sections because Attention-based MIL operates on the embedding level while CLAM introduces an additional branch on instance level.
 			The classical MIL literature has produced a range of methods for both paradigms. 
 			%including Diverse Density and its extension EM-DD, distance-based 
@@ -312,7 +319,7 @@ labelsep=space]{caption}
 			and probabilistic variants such as \textit{noisy-or} \cite{maronFrameworkMultipleInstanceLearning1997} and \textit{noisy-and} \cite{krausClassifyingSegmentingMicroscopy2016}. \textcite{wangRevisitingMultipleInstance2018} demonstrate empirically 
 			that embedded-space approaches for bag classification are superior to instance-space approaches. However, what all the operators mentioned have in common is 
 			that they are fixed and contain no learnable parameters, meaning they cannot adapt to the structure of the task in question. The solution to this problem 
-			is provided by attention based pooling \ref{sec:2.3}.
+			is provided by attention based pooling \ref{sec:attmil}.
 
 			
 		\subsection{Attention}
@@ -338,7 +345,7 @@ labelsep=space]{caption}
 			with the rest of the system; and because the score is comuted by such an additive network, its called additive attention.
 
 			Two properties of this formulation are central for their later use. First, the softmax-normalisation ensures, that the weights 
-			are non-negative and sum to one, meaning the context-vector $c_i$ stays in a stable value range independent of the squence lenght $T_x$ and 
+			are non-negative and sum to one, meaning the context-vector $c_i$ stays in a stable value range independent of the squence length $T_x$ and 
 			it can be represented as a convex combination of the encoder-states. Second, the whole mapping is differentiable, which allows the training 
 			of the alignment model through backpropagation, instead of setting it per hand. Additionally, the weights $a_{ij}$ are directly interpretable
 			as the contribution of the imput-element $j$ to the output $i$.
@@ -401,7 +408,7 @@ labelsep=space]{caption}
 				\label{fig:attmil_schema}
 			\end{figure}
 			
-		\subsection{CLAM}
+		\subsection{CLAM}\label{sec:clam}
 			With increasingly larger bags Attention-based MIL reaches its limits because the bag label represents only a 
 			comparatively weak training signal.	This problem is especially prevalent in medical image analysis, where bags, 
 			representing whole-slide images, can contain thousands of patches.
@@ -431,13 +438,13 @@ labelsep=space]{caption}
 			loss function “must be smooth and have non-sparse gradients in order to work well with deep neural networks”.
 
 			The authors empirically demonstrate the data efficiency of their approach. For the subtyping of renal cell 
-			carcinoma, 25 per cent of the training data was sufficient to achieve an average test AUC of 0.94. Using the 
+			carcinoma, 25 \% of the training data was sufficient to achieve an average test AUC of 0.94. Using the 
 			whole training set, the AUC increased to 0.973. At the same time, the attention maps proved to be interpretable
 			and the models were found to be robust when compared with independent cohorts.
 
 			CLAM was developed for the classification of whole-slide images. In this thesis the procedure is adapted to the 
-			counting of grain ears, in which the patches from drone images are treated as the instances. The modifications needed
-			to achieve this task are described in Section~\ref{sec:5.3}.
+			counting of wheat ears, in which the patches from drone images are treated as the instances. The modifications needed
+			to achieve this task are described in Section~\ref{sec:clam_impl}.
 
 			\begin{figure}[t]
 				\centering
@@ -462,9 +469,8 @@ labelsep=space]{caption}
 					\toprule
 					Level & Metric & Range & Optimum \\
 					\midrule
-					Bag classification & Accuracy & $[0,1]$ & $1$ \\
-					\midrule
-					\multirow{4}{*}{Instance separation}
+					\multirow{4}{*}{General}
+						& Accuracy & $[0,1]$ & $1$ \\
 						& Precision & $[0,1]$ & $1$ \\
 						& Recall    & $[0,1]$ & $1$ \\
 						& F1        & $[0,1]$ & $1$ \\
@@ -488,6 +494,8 @@ labelsep=space]{caption}
 				\begin{equation}
 					\mathrm{Accuracy} = \frac{TP + TN}{TP + TN + FP + FN} .
 				\end{equation}
+				To better analyse the cause of misclassifications the \emph{precision}, \emph{recall} (Equation (2)) and \emph{AUC} 
+				can be used.
 
 			\subsubsection*{Instance separation}
 				The quality of the instance-level separation is assessed with the standard
@@ -511,7 +519,8 @@ labelsep=space]{caption}
 				randomly chosen negative one; $0.5$ corresponds to random guessing and $1$ to
 				perfect separability. The instance-level annotations required for these metrics are taken from the annotated
 				evaluation datasets described in Section~\ref{sec:4}.
-			
+				These metrics can also be used to suport the evaluation of the bag-level classification.
+
 			\subsubsection*{Counting performance}
 				The \emph{mean absolute error} reports the average absolute deviation between
 				the predicted and the true count. It is easy to interpret and stays on the
@@ -560,7 +569,9 @@ labelsep=space]{caption}
 			the weakly supervised MIL models proposed in this thesis. A problem that arose from the datasets --- caused by their different original purpose --- 
 			is the lack of sufficient true-negative images without any wheat ears. This means that the bags could not be created by treating each image, cut into patches, 
 			as a single bag. Instead, the patches are extracted from all images, pooled into positive and negative patches, and 
-			bags are created by randomly sampling from the pools. This results in a three-step process for the bag creation shown in Figure~\ref{fig:bag_creation}. 
+			bags are created by randomly sampling from the pools. This results in a three-step process for the bag creation shown in Figure~\ref{fig:bag_creation}.
+			The three steps are: (1) the choice of the image dataset, (2) the generation and pooling of patches and (3) the creation of the bags. Each of the three steps 
+			is further explained in the following sections.
 			The bag creation follows the same process for all datasets, but the patch generation differs depending on the annotations available
 			in the underlying image dataset. The only exception to this process are the test bags used in Section~\ref{sec:img_infer}, which are generated per image.
 			The following sections describe the datasets, the patch generation and bag generation in more detail.
@@ -570,7 +581,8 @@ labelsep=space]{caption}
 				\centering
 				\includegraphics[width=0.92\textwidth]{tikz/bag_creation.pdf}
 				\caption{\textbf{Bag creation process} --- (1) image dataset choice with the corresponding annotations, (2) patch generation and 
-				pooling into positive and negative patches and (3) bag creation thorugh random sampling from those pools}
+				pooling into positive and negative patches and (3) bag creation thorugh random sampling from those pools. 
+				\footnotesize K is the number of patches per bag, $\mathcal{N}$ the normal distribution, $n^+$ the number of positive patches per bag, $\mathcal{U}$ the uniform distribtion over the bag size and $Y$ the bag label.}
 				\label{fig:bag_creation}
 			\end{figure}
 			
@@ -635,15 +647,16 @@ labelsep=space]{caption}
 				\label{fig:dataset_examples}
 			\end{figure}
 			the testing of the method on a larger and more diverse dataset
-			and to be able to evaluate the counting performance. The instance-level annotations, while not used for training, are necessary for the evaluation
-			and development of a counting method. The following sections describe the three image datasets used in this thesis in more detail and examples for each dataset
+			and to be able to evaluate the counting performance. The instance-level annotations, while not used for training, are necessary for the development 
+			of a counting method. The metrics needed for evaluating said counting method need patch-level annotations to be calculated. Without these
+			annotations the development would be like a shot in the dark. The following sections describe the three image datasets used in this thesis in more detail and examples for each dataset
 			are presented in Figure~\ref{fig:dataset_examples}.
 			
 
 			\subsubsection{GWHD dataset}
 				For the detection and counting of wheat ears, the Global Wheat Head Detection (GWHD) dataset 
 				\cite{davidGlobalWheatHead2021} is the most comprehensive publicly available dataset. 
-				It was created to address the lack of large, diverse datasets for wheat head detection and counting, which are essential 
+				It was created to address the lack of large, diverse datasets for wheat ear detection and counting, which are essential 
 				for developing robust machine learning models. The GWHD dataset contains around 6,400 images taken at ground level with 275,187 wheat ears annotated with bounding 
 				boxes from 12 countries, capturing a wide range of wheat varieties, growth stages, lighting conditions, and camera angles. 
 				This diversity makes it an ideal benchmark for evaluating the performance of different detection and counting methods. 
@@ -651,40 +664,50 @@ labelsep=space]{caption}
 				The first of two problems posed by this dataset is that
 				less than 10 images are true negatives without any annotations. This makes it impossible to define bags image-wise, as the negative bags would be underrepresented.
 				Instead, the patch-pooling method described above was applied, with patches defined by their overlap with the bounding boxes. The other problem is the 
-				strong domain shift between the images of the different splits. Using those splits would add an additional level of difficulty to the already difficult counting 
-				task. Therefore, new splits were created where each split received a distinct percentage of the patch pools relative to its bag number; the patch pools were also split to avoid data leakage.
+				strong domain shift between the images of the different splits. It is the result of the different acquisition conditions between institutes and their disjunct separation between the splits.
+				Using those splits would add an additional level of difficulty to the already difficult counting 
+				task. Therefore, new splits were created where each split received a distinct percentage of the patch pools relative to its bag number. For most of the datasets created with a 
+				train/val/test split of 1000/200/200 that meant that $1000/1400*100\approx71\%$ of the patches were assigned to the training setand $\approx14\%$ to the val and test split respectively. 
+				The patch pools were also split to avoid data leakage.
 					
 			\subsubsection{Real drone images}
 				The drone images are split into two different datasets of images taken with ? from a height of 4 m. The first was collected in 2025 and contains 173 point-annotated images of wheat fields
 				in the final growth stage just before harvest. Similarly to the GWHD images, the annotations allow for an instance-level evaluation of the counting performance.
 				The pre-existing train/val/test (83/20/70 images) splits were used, as there is no domain shift between the splits. The missing true-negative 
-				images required the same patch-pooling method as for GWHD, applied within the existing splits, with the positive patches defined by the point annotations.
+				images required the same patch-pooling method as for GWHD, applied within the existing splits, with the positive patches defined by the point annotations (Section~\ref{sec:patch_definition}).
 
 				The second set of images was specifically collected for this thesis in 2026 and contains 176 images. Half of the images were collected before the flowering stage
 				as true negatives and the other half after the wheat ears were visible. Both were taken in the same field. This clean separation of the positive and negative images, the fact that 
-				the images do not need to be cropped to define the field section and the high density of wheat ears in the positive images allow for a simple patch-collection method.
+				images are only only include the field section (no background that would need to be excluded in the patch generation process) and the high density of 
+				wheat ears in the positive images allow for a simple patch-collection method.
 				Positive patches were cut in a regular grid from the Drone\_BBG\_2 images, while negative patches were cut in a regular grid from the Drone\_BBG\_1 images. 
 				The resulting patch pools were then used to create the bags by random sampling. A risk of this method is label noise in the positive patches,
 				as there is no guarantee that every positive patch contains a wheat ear.
 		
 			\subsubsection{Synthetic drone images}
 				In order to have easy access to a large number of point-annotated images for testing different methods, a synthetic dataset was created using
-				a model trained on real drone images. 1000 positive and 1000 negative images were generated, which were then used to define the positive and negative
+				Blender. 1000 positive and 1000 negative images were generated, which were then used to define the positive and negative
 				patch pools used for random sampling of the bags. The only difference from the method used on the real annotated drone images is that the negative 
 				patches were defined on the negative images without any wheat ears. This dataset was only used to test the method for general feasibility, 
 				representing an easier problem than the GWHD images, because of the clearer separation of plant and background.
 		
-		\subsection{Patch extraction \& labelling}\label{sec:patch_definition}
+		\subsection{Patch extraction and labelling}\label{sec:patch_definition}
 			The patch definition process varies depending on the annotation type of the images. For images with \texttt{Bounding boxes}, the positive patches
-			were defined by centring a regular grid of patches on each bounding box. For each bounding box at least one positive patch is defined. Multiple patches are 
-			defined only if they meet a minimum-overlap requirement with the bounding box (default: 100\% of the patch inside the box). This method is compared
-			to a basic gird-based method in Section~\ref{sec:patch_def_comp} where all patches are defined on a regular grid and labelled based on bounding box 
-			overlap with a therhold of 0.7. The second method is only used in the the mentioned section.
+			were defined by centring a regular grid of patches on each bounding box. The grid size is calulated by: 
+			\begin{equation}
+				\text{Grid Size} = \max(1, \lfloor(\frac{Box Size * (2-Threshold)}{Patch Size})\rfloor).
+			\end{equation}
+			The equation enusures that at least one patch is defined per bounding box, that the grid size is proportional to the bounding box and 
+			that the threshold is taken into account. The default threshold used for this patch definition is 1.0. This method is compared
+			to a basic gird-based method in Section~\ref{sec:gwhd_new_splits} where all patches are defined on a regular grid and labelled based on bounding box 
+			overlap with a threshold of 0.7. The overlap is calculated as the ratio of the intersection area to the union area of the patch and the bounding box.
+			The second method is only used in the the mentioned section.
 			For images with \texttt{point annotations}, each annotation resulted in exactly one positive patch centred on the point.
 			For the \texttt{time-dependent} drone images, the positive patches were cut on a regular grid from the positive images.
 			Negative patches were generally defined by a regular grid of determined patch size on either true-negative images or on positive images, under the constraint of 
 			no overlap with any annotation. Before saving the patches into the bags, they were converted to grayscale using the standard conversion formula to 
-			reduce the complexity of the model. This step was skipped for the colour datasets. In this thesis, three patch sizes were used depending on the experiment: 32$\times$32, 64$\times$64 and 128$\times$128.
+			reduce the complexity of the model. The only exception for this step are the bags created for Section~\ref{sec:train_grayscale}. Here the
+			patches kept their three colour channels in order to examine its effect on the training process. In this thesis, three patch sizes were used depending on the experiment: 32$\times$32, 64$\times$64 and 128$\times$128.
 			The chosen patch size is mentioned in the respective dataset name.
 
 			% \begin{figure}
@@ -701,13 +724,13 @@ labelsep=space]{caption}
 			% 	\label{fig:bbox_overlap}
 			% \end{figure}
 		
-		\subsection{Bag construction}
+		\subsection{Bag construction}\label{sec:bag_construction}
 			The bag construction process is identical for almost all datasets. Half of the bags of each split were created with a positive label and the other half with a negative label.
-			The mean bag length was set to 100 with a standard deviation of 10. The patches for each bag were randomly sampled from separate positive and negative patch
-			pools for each split to avoid data leakage. The number of positive patches in the positive bags was uniformly sampled between 1 and the bag length (mean $\approx 50$), 
+			The mean bag size was set to 100 with a standard deviation of 10. The patches for each bag were randomly sampled from separate positive and negative patch
+			pools for each split to avoid data leakage. The number of positive patches in the positive bags was uniformly sampled between 1 and the bag size (mean $\approx 50$), 
 			to cover the whole range of densities evenly and test the model across all of them.
 			The standard bag split was 1000/200/200 for train/val/test.
-			Because the number of images was sufficient and the purpose of this thesis was to test the general feasibility of the method, no data augmentation was applied.
+			Because the number of images watextwidths sufficient and the purpose of this thesis was to test the general feasibility of the method, no data augmentation was applied.
 			
 			For creating bags per image, each image is cut into patches of predetermined size along a regular grid. 
 			Patch labels for instance-level and counting evaluation are assigned based on the 
@@ -716,7 +739,7 @@ labelsep=space]{caption}
 				\centering
 				\begin{tabular}{@{}lccc@{}}
 					\toprule
-					Dataset & Image Set & Pos Density & Bag Length \\
+					Dataset & Image Set & Pos Density & Bag Size \\
 					\midrule
 					to & be  & filled  & !!! \\
 					\bottomrule
@@ -729,7 +752,7 @@ labelsep=space]{caption}
 		This chapter describes the proposed method for counting wheat ears in drone images as well as all the underlying concepts developed in this thesis. 
 		All details regarding the model architectures, the training procedure and the evaluation protocol are described to be referenced in the
 		experiments and results chapter.
-		\subsection{Wheat head counting as a MIL problem}
+		\subsection{Wheat ear counting as a MIL problem}
 
 			While there are datasets with annotated wheat ears, such annotation only exists for a small subset of drone images, which would not 
 			be enough to train a powerful deep neural network. The labels that are easy to create are the bag labels, which are obtained by 
@@ -780,15 +803,17 @@ labelsep=space]{caption}
 			different patch sizes (32, 64, 128) to find the best-performing patch size for the counting task. The best-performing patch size is 
 			then used for the final evaluation of the method.
 
-			When counting, negative bags are ignored, as they should not contain any positive patches.
+			The count on negative bags is set to zero per default, as they should not contain any positive patches per definition. The counting performance
+			however is evaluated on all bags, including the negative ones.
 
-		\subsection{Attention-based MIL}
+		\subsection{Attention-based MIL}\label{sec:method_attmil}
 				The attention-based MIL model in this thesis follows the architecture presented in Section~\ref{sec:attmil}, proposed by 
-				\textcite{ilseAttentionbasedDeepMultiple2018} and applied only to the secondary counting goal.  The main addition to the 
-				original architecture (\url{https://github.com/AMLab-Amsterdam/AttentionDeepMIL}) is the central counting mechanism, which
+				\textcite{ilseAttentionbasedDeepMultiple2018} and applied only to the secondary counting goal. The main addition to the 
+				original architecture (\url{https://github.com/AMLab-Amsterdam/AttentionDeepMIL}) proposed by this thesis is the central counting mechanism, which
 				is a simple thresholding of the attention weights to count 
 				the number of positive patches in a bag. Additional modifications were made to the backbone and the attention mechanism to 
-				improve the counting performance of the model (Figure~\ref{fig:mod_attmil}). Both the gated and ungated attention mechanisms were tested.
+				improve the counting performance of the model (Figure~\ref{fig:mod_attmil}), as described in the following paragraphs. 
+				Both the gated and ungated attention mechanisms were tested.
 
 				The modifications to the backbone are the addition of GroupNorm layers after each convolutional layer to stabilise the 
 				training process, a third convolutional layer to increase the capacity of the feature extractor, and a dropout layer 
@@ -799,10 +824,10 @@ labelsep=space]{caption}
 				For the attention mechanism, different activation functions were tested to find the best-performing one for the counting task.				
 				Softmax activation is the standard choice for attention mechanisms and is used as the baseline. It normalises the weights 
 				so that they sum to one, which makes them permutation- and size-invariant. A problem for the counting task is that the sum of the weights
-				is spread more thinly with increasing bag length, increasing the difficulty of separating the positive and negative patches 
+				is spread more thinly with increasing bag size, increasing the difficulty of separating the positive and negative patches 
 				because their weights are closer together. Additionally, positive patches compete with each other for the attention weights,
 				which can lead to a normalisation-saturation problem where strong positive patches are weighted too heavily, causing other positives to fall below the threshold.
-				This problem grows with bag length and number of positive patches. Sparsemax \cite{sparsemax} and entmax \cite{entmax} are two alternatives to softmax
+				This problem grows with bag size and number of positive patches. Sparsemax \cite{sparsemax} and entmax \cite{entmax} are two alternatives to softmax
 				that are designed to mitigate these problems. Both also project into the probability simplex and all weights sum to one,
 				but allow for sparse solutions, where unimportant patches are assigned zero weight. Entmax is a generalisation of softmax and sparsemax,
 				where the degree of sparsity can be controlled by a parameter $\alpha$. For $\alpha=1$, entmax is equivalent to softmax, for $\alpha=2$ 
@@ -828,21 +853,23 @@ labelsep=space]{caption}
 					\mathcal{L} = -\left[Y\log \hat{p} + (1-Y)\log(1-\hat{p})\right] 
 				\end{align*}
 				with $\hat{p}$ clamped to $[10^{-5},1-10^{-5}]$. Class weighting is not needed because the bag labels are balanced at 50/50 
-				between positive and negative bags. The loss is backpropagated using the Adam optimiser with a standard learning rate of $10^{-4}$ and 
+				between positive and negative bags. The loss is backpropagated using the Adam optimiser with a standard learning rate of $5 * 10^{-4}$ and 
 				a weight decay of $10^{-5}$. When using a pretrained backbone, its learning rate was reduced by a factor of 100.
 				
-				The variable bag length of some datasets is accounted for by the attention mechanism and the batch size of one bag. Through \textit{squeeze(0)}, the batch dimension is removed,
-				which makes any padding and masking unnecessary, allowing free variation of the bag length. Attention pooling is permutation- and size-invariant.
+				The variable bag size of some datasets is accounted for by the attention mechanism and the batch size of one bag. The batch dimension is removed,
+				which makes any padding and masking unnecessary, allowing free variation of the bag size. Attention pooling is permutation- and size-invariant.
 				
 				\begin{figure}[ht]
 					\centering
 					\includegraphics[width=\textwidth]{tikz/att_mil_modified.pdf}
 					\caption{\textbf{Modified attention-based MIL architecture} --- The modifications to the backbone structure and the attention 
-					mechanism are highlighted in red and surrounded by brackets.}
+					mechanism are highlighted in red and surrounded by brackets. The modifications are split into structural modifications to the 
+					backbone in order to increase the capacity of the feature extractor and modifications to the attention mechanism to improve 
+					the separation of the positive and negative patches, in order to improve the counting performance.}
 					\label{fig:mod_attmil}
 				\end{figure}
 
-		\subsection{CLAM-based implementation}\label{sec:5.3}
+		\subsection{CLAM-based implementation}\label{sec:clam_impl}
 			The second model architecture used in this thesis is based on the CLAM architecture (Section~\ref{sec:clam}) proposed by \textcite{luDataEfficientWeakly2020} 
 			and adds an instance-level classification task to the attention-based MIL model, shown in Figure~\ref{fig:clam_impl}. As in the original CLAM architecture (\url{https://github.com/mahmoodlab/CLAM}), 
 			the instance classifier is trained on pseudo-labels generated from the attention weights. For positive bags, the top-$B$ patches (by attention weight) serve as strong positive evidence and the bottom-$B$ 
@@ -870,15 +897,17 @@ labelsep=space]{caption}
 			Third, the Otsu method is applied to each bag individually to find the optimal threshold for each bag. Fourth, a global Otsu threshold is calculated on the training set and applied to the test set. Fifth, a global Otsu threshold is calculated on the validation set and applied to the test set. The best-performing thresholding method is then used for the final evaluation of the model.
 			\begin{figure}[ht]
 				\centering
-				\includegraphics[width=\textwidth]{tikz/clam_modified.pdf}
-				\caption{\textbf{CLAM-based architecture} --- The model consists of three blocks: the backbone (grey), the attention mechanism with 
-				the bag classification (\textcolor{blue}{blue}) and the instance classifier (\textcolor{orange}{orange})}
+				\includegraphics[width=0.9\textwidth]{tikz/clam_modified.pdf}
+				\caption{\textbf{CLAM-based architecture} --- Like the original structure (Figure~\ref{fig:clam_schematic}) the model consists of three blocks: 
+				the backbone (grey), the attention mechanism with the bag classification (\textcolor{blue}{blue}) and 
+				the instance classifier (\textcolor{orange}{orange}). The differences lie in the use of the end-to-end trainable backbone from the AttMIL model,
+				the missing multi-class branches and the use of binary cross-entropy loss for the instance classifier.}
 				\label{fig:clam_impl}
 			\end{figure}
 
-		\subsection{Quantile-based pseudo-labelling}
+		\subsubsection{Quantile-based pseudo-labelling}
 			As an alternative to the rigid top-$B$ pseudo-labeling, a quantile-based approach was tested. Instead of using a fixed number of patches,
-			which can be problematic because of the high variance in bag length and number of positive patches, the quantile-based approach uses a 
+			which can be problematic because of the high variance in bag size and number of positive patches, the quantile-based approach uses a 
 			fixed quantile of the attention weights to define the pseudo-labels. This means the top-$q$ quantile (\textit{--pos\_quantile}) of the attention weights 
 			is used as strong positive evidence and the bottom-$q$ quantile (\textit{--neg\_quantile}) as strong negative evidence. This approach allows for more 
 			flexibility in defining the pseudo-labels, as it can overcome the negative patch bias of the top-$B$ approach, and can yield more robust training 
@@ -902,7 +931,7 @@ labelsep=space]{caption}
 			The inputs are colour patches and the outputs passed to the backbone are the learned grayscale patches. The learned weights are extracted, normalised to one 
 			and compared to the standard grayscale conversion weights to determine whether the model learned a different weighting of the colour channels.
 
-		\subsection{Feature visualisation}
+		\subsection{Feature visualisation}\label{sec:UMAP}
 			In order to analyse the feature separation in the output of the backbone, the feature representations of the patches are
 			visualised using UMAP \cite{mcinnesUMAPUniformManifold2020} and colour-coded by their true labels. The feature representations are extracted 
 			from the trained models for MNIST and the wheat datasets and compared to determine whether the poor separation performance is due to the feature representations 
@@ -915,36 +944,104 @@ labelsep=space]{caption}
 			The model uses the same architecture as the attention-based MIL model, but feeds the patch representations directly into a binary 
 			classifier instead of the attention mechanism (Figure~\ref{fig:baseline}). This allows for a direct evaluation of the achievable instance-level
 			separation under a supervised approach and gives an upper bound for the possible separation performance.
-			The model is trained with the same hyperparameters as the other models, but with a batch size of 32 and a learning rate of $10^{-3}$ for 50 epochs. 
-			The main evaluation metric is the AUC, which is calculated on the test set of the annotated patches. 
+			The model is trained with the same hyperparameters as the other models, but with a batch size of 32 and a learning rate of $10^{-3}$ for 20 epochs. 
+			The main evaluation metric is the AUC, which is calculated on the test set of the annotated patches and reported as the median over 5 seeds. 
 
-		\subsection{Hyperparameter search}
-			For the attention-based MIL model, a hyperparameter search was conducted over the following parameters: learning rate, weight decay, dropout rate, 
-			attention activation function and attention dimension. The search was conducted using a random search over a predefined range of values for each parameter.
-			The best-performing configuration was then used for all subsequent experiments. For the CLAM-based model, a hyperparameter search was conducted over the same parameters as the attention-based MIL model,
-			as well as the bag weight and the pseudo-labeling parameters. The best-performing configuration was then used for all subsequent experiments.
+		\subsection{Hyperparameter search}\label{sec:greedy}
+			The hyperparameter search for the backbone of the models in this thesis was done using a greedy search approach. 
+			Hereby the hyperparameters are optimised one at a time, varying only the currently tested hyperparameter, while keeping the other hyperparameters fixed. 
+			The best value is then used for the search of the next hyperparameter. This greatly reduces the search space and allows for a more
+			efficient search. For example, a full grid search over the three in this thesis examined hyperparameters would require $4\times3\times4 = 48$ 
+			configurations, while the greedy search only requires $1+3+2+3=9$ configurations instead. Opposed to a random search,
+			this approach allows a direct comparison between candidates of each dimension, because runs only vary in one hyperparameter. 
+			This pairwise comparison follows the same approach that is used for all experiments in this thesis.
+
+
+
+			The searched space consists of three hyperparameters that determine the capacity of the feature extractor: the number of 
+			feature maps per convolutional layer (\textit{num\_maps}), the adaptive max pooling resolution (\textit{pool\_size}) and the 
+			embedding dimension of the fully connected layer and the output of the backbone (\textit{M}). 
+
+			\begin{table}[htbp]
+				\centering
+				\small
+				\begin{tabular}{@{}lccc@{}}
+					\toprule
+					Hyperparameter & Baseline & Candidates & Role \\
+					\midrule
+					Feature maps (\textit{num\_maps}) & $50$  & $\{64, 128, 256\}$          & conv width \\
+					Pooling resolution $p$            & $4$   & $\{4, 6, 8\}$               & spatial resolution \\
+					Embedding dimension $M$           & $500$ & $\{250, 500, 1024, 2048\}$  & instance embedding size \\
+					\bottomrule
+				\end{tabular}
+				\caption{Search space of the greedy hyperparameter search. The baseline is the
+				configuration of the original architecture; the order of the rows is the order
+				in which the coordinates are optimised. Fixed: kernel size $5$, attention dimension $L=128$, $50$ epochs,
+					learning rate $5\cdot10^{-4}$, weight decay $10^{-5}$}
+				\label{tab:greedy-space}
+
+			\end{table}
+
+			The activation function stays constant during the search and is selected beforehand. Comparisons over different activation functions and 
+			structural backbone modifications are done separately in Sections~\ref{sec:gwhd_activations} and~\ref{sec:gwhd_backbones}. 
+			The staring points for each hyperparameters shown in the baseline column of Table~\ref{tab:greedy-space} originate from
+			the original AttMIL architecture. They are build as an deliberate restriction as the search cannot return to them.
+
+			The search in rounds:
+			\begin{enumerate}
+				\item \textbf{Base-run}: Training and evaluation of the baseline configuration
+				\item \textbf{Cooridnate step}: Hyperparameters are optimised in a set order: feature maps, pooling resolution, embedding dimension. 
+				       For each hyperparameter, every candidate is trained that varies form the current one while the others stay fixed on the current best value
+				\item \textbf{Replacement}: A candidate replaces the current best only if it significantly improves the current best value for the target metric
+				\item \textbf{End of Round}: After no hyperparameters changed in a round, the search is finished otherwise a new round is startedwith a maximum of 2 rounds
+				\item \textbf{Final run}: The best configuration is trained on 5 instead of 3 seeds serving as the final result for the hyperparameter search
+			\end{enumerate}
+
+			The idea behind the second round is to check wether on candidate is still optimal after the other hyperparameters have been changed. A second round 
+			therefore only costs as many training runs as the number of new combinations created by the first round. Technically, the search starts each experiment as its own trainings process with the existing trainigs and evaluation pipeline, using the same code
+			as all the other experiments. 
+			
+			The target function $S$ is a combination of the bag-AUC and the patch-level AUC, with a respective deduction for seed-dispersion, 
+			and is calculated based on the in mlflow aggregated metics:
+
+			\begin{equation}
+				S = 0.5\,\mu\!\left(\mathrm{AUC}_{\mathrm{bag}}\right)
+					+ 0.5\,\mu\!\left(\mathrm{AUC}_{\mathrm{patch}}\right)
+					- 0.3\,\sigma\!\left(\mathrm{AUC}_{\mathrm{bag}}\right)
+					- 0.3\,\sigma\!\left(\mathrm{AUC}_{\mathrm{patch}}\right)
+			\end{equation}
+			
+			$\sigma$ denotes the standard deviation and $\mu$ the mean over the three seeds. The same weights for the two AUCs are chosen
+			because the bag-level AUC is a prerequisite for the patch-level AUC and the second is the main goal of the search. The deductions
+			are done to punish configurations with collapsed seeds.
+
 
 		\subsection{Evaluation protocol}
 
 			As presented in Section~\ref{sec:metrics}, the evaluation of the models can also be split into three
 			different categories: bag classification, instance-level separation and counting performance.
 			
-			The bag classification relies mainly on the classification accuracy, with the AUC as a secondary metric. This is the first evaluation step for 
+			The bag classification relies mainly on the classification accuracy, with the AUC as a secondary metric. Precsion and recall take a diagnostic
+			role in assessing the cause of misclassifications. This is the first evaluation step for 
 			each of the models, as it is the main task of the MIL paradigm and the two subsequent tasks rely on a good performance of the bag classification.
 			A model is accepted for further evaluation if it achieves a bag classification accuracy of at least 90\%.
-			The instance-level separation is evaluated using the AUC, with precision, recall and F1-score as secondary metrics, to put the AUC into context.
-			The counting performance is mainly evaluated using the MAE, as it best shows how closely the predicted counts match the true counts.
+			The instance-level separation is evaluated using the AUC, with precision, recall and F1-score as diagnostic metrics, to put the AUC into context.
+			For some experiments the AUC is calculated in two ways: patch AUC on the raw weights and thresholdedpatch AUC on the binarized patch labels after 
+			thresholding. The counting performance is mainly evaluated using the MAE, as it best shows how closely the predicted counts match the true counts.
 			RMSE and $R^2$ are used as secondary metrics to put the MAE into context and give better information about the distribution of the errors.
+			Important to note is that the counting metrics are calculated on all bags while the instance-level metrics are calculated only on those
+			bags predicted as positive.
 
 			Model evaluation and selection is done on the test set of the respective dataset, while all calibrations of thresholding and conversion functions
 			are done on the validation set. The problem of model optimization for the test set that occurs as a result of 
-			choosing models based on the best results on the test set is mitigated through different methods. 
-			Firstly, experiment runs were performed with three different seeds (1, 10, 100) to account for the stochasticity of the training process. 
-			For more robust results, final runs were performed with five seeds instead (additional seeds 1000 and 10000). Because of collapsing seeds the metrics are reported as median over all seeds.
-			Secondly, throughout the experiments, models that were optimized on one dataset were then further evaluated on another dataset in order to evaluate different goals. 
+			choosing models based on the best results on the test set should somewhat be mitigated through two practices.
+			Firstly, throughout the experiments, models that were optimized on one dataset were then further evaluated on another dataset in order to evaluate different goals. 
 			Therefore, the model selection was done on the test set of the first dataset, while the evaluation was done on the test set of the second dataset, preventing 
-			the optimization on the test set of the second dataset. Finally, because calibration of the counting conversion functions is done on the validation set, 
+			the optimization on the test set of the second dataset. Secondly, because calibration of the counting conversion functions is done on the validation set, 
 			the final evaluation of the counting performance is done on the test set, which was not used for any optimization or calibration.
+			Experiment runs were performed with three different seeds (1, 10, 100) to account for the stochasticity of the training process. 
+			For more robust results, final runs were performed with five seeds instead (additional seeds 1000 and 10000). 
+			Because of collapsing seeds the metrics are reported as median over all seeds.
 
 			The evaluation protocol grew chronologically with the experiments and was not fully defined at the beginning of the thesis. Therefore, some of the earlier experiments
 			do not follow the protocol as strictly as the later experiments. Especially since the counting methods were only incrementally developed, some of the metrics
@@ -955,79 +1052,295 @@ labelsep=space]{caption}
 
 	\section{Experiments and results}
 		The experiments and their results are presented chronologically. This structure was chosen to make the thesis more readable and to allow the reader 
-		to conclusiely follow the development of the method. Therefore, each chapter will provide their own goals, the results, their discussion and the conclusion that leads to the next step.
-		The experiments are braodly divided into four parts: the validation of the fundamental Attention MIL method on the MNIST dataset, the transfer and extension of the method to the 
-		GWHD dataset, the development of the CLAM based extension and the final evaluation of the method on the drone dataset with count predictions for the 
+		to conclusively follow the development of the method. Therefore, each chapter provides their own goals, the results, their discussion and the conclusion that leads to the next step.
+		The experiments are broadly divided into four parts: the validation of the fundamental Attention MIL method on the MNIST dataset, the transfer and extension of the method to the 
+		GWHD dataset, the development of the CLAM based extension and the final evaluation of the method on the drone dataset with count predictions 
 		for the actual wheat ears. 
 		\subsection{Method validation on MNIST dataset}\label{sec:mnist_val}
-			To validate the functionality of the attention-based MIL model, the bag-size sweep on the MNIST dataset
-			as described in the original publication by \textcite{ilseAttentionbasedDeepMultiple2018} was reproduced.
+			Before the method is applied to wheat images, it must be demonstrated that
+			the underlying architecture actually works. To this end, the bag-size sweep from the original publication is reproduced on MNIST. The
+			dataset is suitable for this purpose because its instances can be classified individually and unambiguously: it is possible to determine without error
+			whether a digit is a nine. Any weakness that becomes apparent here is therefore due to the
+			aggregation method and not to the recognisability of the instances.
+
+			Besides the proof of concept, the MNIST experiments help to separate two possible sources of error: recognising the positive instances 
+			and the counting rule that reads them from the attention weights. On the wheat data both are mixed. On MNIST the 
+			instances are recognised almost perfectly, so remaining counting errors can be attributed to the counting rule.
+
+			This section is divided into four experiments: the validation of the bag classification against published results, the investigation of
+			the counting performance on the perfect patches, the comparison between gated and ungated attention, and finally a dataset with a significantly higher and more
+			widely distributed density of positive instances, on which two activation functions of the attention mechanism are compared against one another.
+			All experiments, if not mentioned otherwise, are performed with the standard model configuration, which is the ungated attention-based MIL model
+			with softmax attention activation.
+			
 			The MNIST dataset is a well-known dataset of handwritten digits 0 through 9, which is often used as a benchmark for
-			image classification tasks. The dataset contains 60,000 training images and 10,000 test images, each of size 28x28 pixels.
+			image classification tasks. The dataset contains 60,000 training images and 10,000 test images, each of size $28\times28$ pixels.
 			For this experiment, bags of mean lengths of 10, 50 and 100, with a standard deviation of 2, 10 and 20 respectively were created in datasets
 			of 50, 100, 150, 200, 300, 400 and 500 bags. The bags were created by randomly sampling the MNIST images and assigning a bag label
 			of positive if at least one of the images in the bag contained a digit of interest (e.g. digit '9') and negative otherwise. It was 
 			made sure that the datasets were balanced with an equal number of positive and negative bags. Due to the random sampling
 			from a pool of patches where each number is represented equally, the mean number of positive patches in the positive bags
-			is approximately 10\%. The model was trained on these bags and evaluated on a separate test set of bags created in the same way. 
+			is approximately 10\%. This information is important for interpreting the counting performance. The model was trained on these bags and evaluated on a separate test set of bags created in the same way. 
 			The results were compared to the original publication to validate the functionality of the model.
 
-			As can be seen from the results in Figure~\ref{fig:model_validation}, the reproduced results are very similar to the original 
-			results. The higher fluctuations of the reproduced results are due to the lower number of seeds used for the evaluation, which 
-			was limited to 3 seeds for time reasons. The publication used 10-fold cross-validation, which is equivalent to 10 seeds. But the similar 
-			trends show that the model works as expected, is able to accurately classify the bags and the AUC saturates close to 1.0
-			for bag sizes of 50 with 150 training bags. Also noteably, the bag classification performance is almost identical between ungated and gated attention.
-			Therefore, the ungated attention mechanism will be used for the rest of the experiments for on the attention-based MIL model.
-
+			In total, 42 configurations — the combinations of bag size, number of training bags and attention mechanism (gated or ungated) — 
+			were trained with five seeds each. Because some seeds, 14 of the 210 runs, collapsed to randomness during training, 
+			the distribution of the results over the seeds is two-peaked. Therefore, the median value is reported instead of the mean. 
+			
+			As can be seen from the results in Figure~\ref{fig:model_validation} the reproduction confirms the behaviour described in the original 
+			publication. The AUC on the bag-level increases with the number of training bags and saturates close to 1.0. The difference between the gated
+			and ungated attention is negligible, as it stays below the dispersion over the seeds. The dispersion over the seeds is higher in the 
+			reproduced results than in the original, as they used a 10-fold cross-validation. This is most likely caused by the lower number of seeds: 
+			with three seeds the AUC for bag length 10 and 500 bags dropped to 0.767 because of a single collapsed run; with five seeds it is 0.989.
+			
 			\begin{figure}
 				\centering
-				\includegraphics[width=0.5\textwidth]{example-image}
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=0.5\textwidth]{figures/publication_10.png}
+				\end{subfigure}%
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=0.5\textwidth]{figures/mnist_validation_auc_bag_length10.png}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=0.5\textwidth]{figures/publication_50.png}
+				\end{subfigure}%
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=0.5\textwidth]{figures/mnist_validation_auc_bag_length50.png}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=0.5\textwidth]{figures/publication_100.png}
+				\end{subfigure}%
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=0.5\textwidth]{figures/mnist_validation_auc_bag_length100.png}
+				\end{subfigure}
 				\caption{AUC of the model validation. Left: results from \textcite{ilseAttentionbasedDeepMultiple2018}, 
 				right: reproduced results}
 				\label{fig:model_validation}
-			\end{figure}	
-			
-			As the model is able to accurately classify the bags, the next step is to generate a proof-of-concept for the counting method on the MNIST dataset.
-			For this purpose, the trained model us used to predict bag labels for the test set. Addionally the counting method defined in Section\ref{sec:counting} 
-			is applied with a the standard threshold of $1/K$ for softmax activation is used, where $K$ is the number of patches in each bag. 
-			This equates to the average attention weight per patch. The couting performance is surpringly good   
+			\end{figure}
 
-			\begin{table}
+			To summarize, longer bags are easier to classify: bags of length 100 reach an AUC of 1.0 after 50 training bags, 
+			bags of length 10 never reach it. With a constant share of positives, a longer bag contains more positive instances, 
+			so a single misclassified instance matters less. As the following experiments show, the difficulty moves to the patch level instead.
+
+			\subsubsection{Counting proof-of-concept}
+			As the model works as intended and reaches an accepted bag-level AUC of above 0.9 the next step is to test and evaluate the threshold-based counting
+			method on the MNIST dataset. The counting rule defined in Section~\ref{sec:counting} is applied to the trained model:
+			for every positive bag, the patches whose attention weight lies above the threshold of $1/K$ are counted, with $K$ as the number of patches
+			in the bag. The results over all runs are accumulated in Table~\ref{tab:counting-core}
+			
+			\begin{table}[htbp]
 				\centering
-				\begin{tabular}{|c|c|c|}
-					\hline
-					Bag size & Accuracy & AUC \\
-					\hline
-					10 & 0.95 & 0.99 \\
-					20 & 0.97 & 0.99 \\
-					50 & 0.98 & 1.00 \\
-					100 & 0.99 & 1.00 \\
-					\hline
+				\small
+				\begin{tabular}{rlrllll}
+					\toprule
+					bag\_length & model & n & count\_mae & count\_bias & count\_r2 & counting\_accuracy \\
+					\midrule
+					10 & attention & 25 & 0.15 & -0.06  & 0.76  & 0.86  \\
+					10 & gated\_attention & 25 & 0.14 & -0.03  & 0.74  & 0.87  \\
+					\midrule
+					50 & attention & 25 & 0.82  & -0.70  & 0.74  & 0.60  \\
+					50 & gated\_attention & 25 & 0.74  & -0.63  & 0.81  & 0.60  \\
+					\midrule
+					100 & attention & 25 & 2.50  & -2.38  & 0.55  & 0.50  \\
+					100 & gated\_attention & 25 & 1.98  & -1.88  & 0.68 & 0.51  \\
+					\bottomrule
 				\end{tabular}
-				\caption{Comparison of results of the MNIST experiment}
-				\label{tab:mnist_results}
+				\caption{Counting performance by bag size and model variant (including only datasets with at least 150 training bags).}
+				\label{tab:counting-core}
 			\end{table}
-			In order to test the limits of the counting method at the current state, bags of higher density were created with the same distrubution of postive patch counts
-			as in the bags for the wheat datasets. 
-			- Test the naive counting method on the MNIST dataset as a proof of concept for the proposed method\
-			- Evaluation of different density datasets and their impact on the counting performance\
+
+			The bias is negative for all configurations, so the method counts too few patches on average. 
+			For bag length 100 the bias makes up 95\% of the MAE, for bag length 50 about 85 \%. 
+			The error is therefore mostly a systematic undercount, which could in principle be corrected.
+
+			The share of exactly correct counts drops from 0.86 to 0.60 and 0.50. As roughly half of the bags are empty and are correctly counted as zero,
+			a value of 0.50 for a bag size of 100 corresponds to the statement that practically none of the positive bags are predicted exactly. When
+			considering the positive bags alone, the rate drops from around 72\% for a bag size of 10, 
+			to around 20\% for a bag size of 50, to almost zero. This means that almost none of the positive bags are counted
+			correctly for larger bag sizes.
+
+			The amount of training data has a significant effect without causing saturation. For a bag size of 100, the coefficient of determination $R^2$
+			rises from 0.003 with 50 training bags to 0.711 with 500, while the mean absolute error falls from 3.70 to 1.84. 
+			With 50 bags, the coefficient of determination is close to zero, the model is therefore no better than a constant prediction of the mean.
+			Up to 500 bags the performance does not saturate, so more training data would likely improve the counting further.
+
+			The fact that the counting error consists almost entirely of systematic undercounting suggests that it is the counting rule, 
+			rather than the model, that should be examined. A comparison between threshold-free and threshold-based patch evaluation 
+			distinguishes between the two. As shown in Table~\ref{tab:count-mechanism} raw evaluation stays high over all bag sizes.
+			The model sorts the instances well even at 100 patches per bag. The thresholded evaluation, on the other hand, drops distinctly 
+			with increasing bag size and the difference between the two columns increases from 0.026 to 0.131. This loss is caused only by 
+			the thresholding.
+
+			\begin{table}[htbp]
+				\centering
+				\small
+				\begin{tabular}{rrllll}
+					\toprule
+					bag\_length & n & raw & thresholded	& patch\_level\_precision & patch\_level\_recall \\
+					\midrule
+					10 & 49 & 0.993 & 0.967 & 0.937 & 0.944 \\
+					\midrule
+					50 & 50 & 0.945 & 0.852 & 0.983 & 0.709 \\
+					\midrule
+					100 & 45 & 0.922 & 0.791 & 0.991 & 0.585 \\
+					\bottomrule
+				\end{tabular}
+				\caption{Raw attention-weight AUC vs. after thresholding with threshold $1/K$, median over seeds and bag-length from 150.}
+				\label{tab:count-mechanism}
+			\end{table}
+
+			The relationship between precision and recall defines the mechanism. Precision rises to 0.99 as the bag size increases, 
+			while recall falls to 0.59. What is counted is therefore almost always correct; roughly half is overlooked. The
+			threshold is thus set too high. The cause lies in the normalisation of attention: the softmax function constrains the weights of a 
+			bag to sum to one and concentrates the weight on a few particularly unambiguous instances. Since the
+			training objective is solely the bag decision, there is no incentive to distribute attention evenly across all positive instances. As
+			the number of instances increases, therefore, more and more genuine positives fall below the 1/K threshold.
+
+			The counting error on MNIST is therefore mainly caused by the 1/K threshold and not by the learned features.
+			 But it could still be shown that the simple counting rule conceived for this 
+			thesis works in principle. The problems of the thresholding will be addressed in later experiments, which will also be transferred to the wheat datasets.
+
+			\subsubsection{Gated Attention}
+			The comparison between gated and ungated attention is restricted to the most informative
+			case: bags of length 100 with 400 and 500
+			training bags. For shorter bags, bag classification is saturated, and
+			with smaller training sets, the variation across the seeds masks any
+			difference between the variants. The results are shown in Table~\ref{tab:mnist-gated}
+
+			\begin{table}[htbp]
+				\centering
+				\small
+				\begin{tabular}{rlrlrl}
+					\toprule
+					num\_bags & model & n & patch\_level\_auc & count\_mae \\
+					\midrule
+					400 & attention & 5 & 0.927 & 3.163 \\
+					400 & gated\_attention & 5 & 0.951  & 1.525 \\
+					\midrule
+					500 & attention & 5 & 0.942 & 1.990  \\
+					500 & gated\_attention & 5 & 0.934  & 1.810  \\
+					\bottomrule
+				\end{tabular}
+				\caption{Counting performance of gated vs. ungated attention on MNIST with bag length 100 and median over five seeds.}				
+				\label{tab:mnist-gated}
+			\end{table}
+
+			With the same training volume of 500 bags, the two metrics point in
+			opposite directions: the ungated variant leads at the instance level,
+			while the gated variant leads in terms of count. Both differences fall within the
+			interquartile ranges — for counting, the ranges overlap significantly, while for
+			instance evaluation, they just touch. Neither of the two differences is
+			consistent across the seeds.
+
+			The gated variant achieves the best individual result with 400
+			training bags, and does so for both metrics simultaneously. However, the gap there
+			arises largely due to the weak ungated run. The ungated variant
+			achieves only a MAE of 3.163.
+
+			The ungated variant is used for the subsequent experiments. The rationale
+			is not that it is superior, but that, with the same
+			training budget, no reliable difference is apparent; in this case, the
+			simpler variant with the lower number of parameters is preferable. This comparison
+			is repeated on the wheat datasets in Section~\ref{sec:gwhd_gated} and the same conclusion is reached.
+			
+			\subsubsection{Density and activation function}
+			The experiments carried out so far have used a proportion of positive instances of around
+			10 \%. The bags on the wheat datasets in the following section are composed differently, as described in Section~\ref{sec:bag_construction},
+			with a higher proportion of approximately 50\% of positive patches. To test the counting method under these conditions without altering the detectability of the patches,
+			a MNIST dataset with the same count distribution was generated. It comprises bags of length 100 with an average of 52.4 positive patches per positive
+			bag and a standard deviation of 28.6; across all bags, this results in a mean of 26.2 and a median of zero, closely approximating the distribution
+			of the wheat bags. On this dataset, two runs, each comprising five seeds, were trained; these differed solely in the activation function of the
+			attention mechanism. This also serves as a comparison between the softmax and sigmoid activation functions, the second of which
+			should be more suitable for counting higher density bags. It does not normalise the weights to sum to one and should therefore
+			circumvent the theoretical problem of normalisation-saturation of softmax. 
+
+			\begin{table}[htbp]
+				\centering
+				\small
+				\begin{tabular}{lcc}
+					\toprule
+					Metric & softmax ($n=5$) & sigmoid ($n=5$) \\
+					\midrule
+					Bag accuracy & 1.000 & 1.000 \\
+					Bag AUC & 1.000 & 1.000 \\
+					Patch AUC (unthresholded) & \textbf{0.928} & 0.857 \\
+					Patch AUC (thresholded) & 0.784 & \textbf{0.870} \\
+					Patch precision & \textbf{0.992} & 0.937 \\
+					Patch recall & 0.585 & \textbf{0.779} \\
+					Count MAE & 10.98 & \textbf{6.61} \\
+					Count bias & -10.78 & \textbf{-5.70} \\
+					Count $R^2$ & 0.662 & \textbf{0.843} \\
+					\bottomrule
+				\end{tabular}
+				\caption{Attention activation on the high-density MNIST bags. Median over five seeds.}
+				\label{tab:mnist_activation}
+			\end{table}
+			As the results in Table~\ref{tab:mnist_activation} show the assumption is correct, when regarding the counting performance.
+			But first, the bag task is trivial on this dataset; both activations achieve an accuracy and an AUC of one in all five seeds.
+			With around 50 \% positive instances per positive bag, this is to be expected, and it confirms once again that the bag level has been
+			fully exploited as a discriminating criterion.
+
+			Softmax ranks the instances better (patch AUC 0.928 vs. 0.857) but counts worse: its MAE of 10.98 is almost twice as high 
+			as the 6.61 of sigmoid. After thresholding, the ratio of instance scores reverses accordingly, from 0.784 to 0.870
+			in favour of the sigmoid variant. This effect is also visible in the scatter plot (Figure~\ref{fig:mnist_activation}), 
+			which shows the predicted counts against the true counts. While both variants show a good performance for the lower counts, 
+			the softmax variant saturates for higher counts, while the sigmoid variant is able to predict the higher counts more accurately. 
+
 			\begin{figure}
 				\centering
-				\includegraphics[width=0.5\textwidth]{example-image}
-				\caption{Example of a bag with 10 instances from the MNIST dataset}
-				\label{fig:mnist_count_res}
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=\textwidth]{figures/mnist_softmax_scatter.png}
+					\caption{Softmax activation function}
+					\label{fig:mnist_activation_softmax}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.5\textwidth}
+					\centering
+					\includegraphics[width=\textwidth]{figures/mnist_sigmoid_scatter.png}
+					\caption{Sigmoid activation function}
+					\label{fig:mnist_activation_sigmoid}
+				\end{subfigure}
+				\caption{Scatter plot of the count predictions vs the true counts for all five seeds. Red line marks the perfect predictions. (a) softmax, (b) sigmoid activation function.}
+				\label{fig:mnist_activation}
 			\end{figure}
-			- Comparison between gated and ungated attention for the counting performance\
-			- Testing sigmoid instead of softmax activation function for the attention layer and its impact on the counting performance\
-				- Sigmoid should give a better seperation of the positive and negative instances\
-		\subsection{Transfer on GWHD dataset}
-			With the switch to the GWHD datasets the main development phase of this thesis begins. From here on out the central goal 
-			is beeing pursued: a solution for the ocuntng of wheat ears in drone images, that only uses minimal annotation and model effort. 
-			Starting point is the applitcation of the, in the previous section on the MNIST dataset validated, model on real wheat images. 
-			This step is kept deliberately inkrementel, keeping architecture, optimizer and count thresholding the same as in the MNIST experiments, 
+
+			This supports the normalisation-saturation explanation from Section~\ref{sec:method_attmil}: with about 52 positives per bag, a threshold of 1/K 
+			cannot select all of them because the softmax weights sum to one. Sigmoid scores each patch independently, 
+			which increases the recall from 0.585 to 0.779 at the cost of some precision (0.992 to 0.937). 
+			Two caveats need to be mentioned. First, the different 
+			thresholding methods used by each activation function could affect the results and later experiments will revisit this question.
+			Second, the sigmoid runs are more unstable than the softmax runs, meaning that the advantage is not guaranteed for a single seed.
+
+			\subsubsection{Interim conclusion}
+			The MNIST experiments show that the implementation reproduces the results of \textcite{ilseAttentionbasedDeepMultiple2018} 
+			and that gated and ungated attention perform almost identically on the bag level. 
+			They also show three things that matter for the following experiments. Firstly, the difficulty of the task does 
+			not disappear as the bag size increases, but shifts from the bag level to the patch level. Secondly, while
+			counting on perfectly classifiable instances is possible in principle, the remaining error consists of systematic 
+			undercounting covering 95\% of the MAE. The cause of this is the fixed threshold at 1/K and not the learnt
+			representation. The recall of the threshold rule largely accounts for the measured bias. Finally, the density test shows that the normalisation of the
+			softmax activation itself becomes a barrier at high positive density.
+
+			The final observation is particularly significant for the following section. On MNIST, counting is limited by the threshold because the instances are
+			reliably recognised individually. On the wheat data, the distinguishability of the instances acts as a second and more serious bottleneck. 
+			The MNIST results thus distinguish between these two sources of error and allow the findings there to be attributed to the 
+			correct cause. The density dataset, which was specifically designed to replicate the distribution of the wheat bags, forms the direct link
+			between the two sections.
+
+		\subsection{AttMIL on the GWHD dataset}
+			With the switch to the GWHD datasets the main development phase of this thesis begins. From here on the central goal 
+			is being pursued: a solution for the counting of wheat ears in drone images, that only uses minimal annotation and model effort. 
+			Starting point is the application of the, in the previous section on the MNIST dataset validated, model on real wheat images. 
+			This step is kept deliberately incremental, keeping architecture, optimizer and count thresholding the same as in the MNIST experiments, 
 			so that every performance loss can be attributed to the change in the dataset and not to the used method.
 
-			The experiments in this subsection build a chain, hwere each step is based on the results of the previous step:
+			The experiments in this subsection build a chain, where each step is based on the results of the previous step:
 			\begin{itemize}
 				\item the model with naive couting on the original GWHD-splits
 				\item the same model on the newly created splits with the two variants of the patch definition
@@ -1038,35 +1351,38 @@ labelsep=space]{caption}
 				\item a dataset with reduced positive patches per bag
 			\end{itemize}
 
-			None of the mentioned steps showed the desired improvement in the counting performance. The value of this chapter lies therefore
-			in what the negative results collectively rule out. Thats what the presentation works towards.
+			None of these steps improved the patchseparation noticeably. This section therefore mainly shows 
+			which parts of the model are not responsible for the weak patch separation. The collective results of all experiments
+			mentioned in this chapter are summarized in Table~\ref{tab:gwhd_results} in the appendix.
 
 			As long as not mentioned otherwise, all the runs in this section use the same configuration: the attention-based MIL model 
 			with two convolutional layers in the backbone, embedding dimension $M=500$, attention-dimension $L=128$, kernel size of 5, 
 			adaptive max pooling on $4\times4$ and 50 feature maps. Training is done over 50 epochs with the Adam optimizer, learning rate 
-			$5*10^{-4}$ and weigt decay $10^{-5}$ with one bag per optimization step. Five seeds were used in each experiment and each experiment
+			$5*10^{-4}$ and weight decay $10^{-5}$ with one bag per optimization step. Five seeds were used in each experiment and each experiment
 			changes exactly one parameter to isolate the effect of that parameter on the performance and to make the runs pair-wise comparable. 
 
-			Because singlular seeds occasionally collapse to randomness, the distribution over the seeds is double-peaked for some configurations and 
-			a mean value would report the wrong result. Therefore, all values off this section are reported as median over all seeds; the dispersion 
+			Because singel seeds occasionally collapse to randomness, the distribution over the seeds is double-peaked for some configurations and 
+			a mean value would report the wrong result. Therefore, all values of this section are reported as median over all seeds; the dispersion 
 			over the seeds is directly discussed, where it carries information.
+
+			A decision must be specified before any results are presented, as it determines how each experiment in this section was evaluated. 
+			The selection throughout is based on instance separability; the counting error is regarded as a secondary criterion.
+			The reason for this stems from the objective: the number of positive patches is merely an intermediate value and is subsequently 
+			to be converted into an ear count. A count that happens to be close to the true value but is based on the wrong patches
+			does not support this conversion. The counting error alone does not distinguish between the two cases. The 
+			MAE therefore always has to be interpreted in relation to the instance separability represented by the patch-level AUC.
 			
 			In order to correctly interpret the counting metrics, a reference point is needed. As half of the bags are negative, the distribution of
-			the positve patch counts is skewed to the left: the median is 0, the mean is around 25. A predictor that always predicts 0 is therefore
-			not a weak but a comparatively strong competitor. Additionally, it gives a better reference point for the counting metrics as the mean predictor,
-			which is defined against $R^2$. Every MAE reported in the following section should therefore be measured against this baseline.
+			the positive patch counts is heavily right-skewed: the median is 0, the mean is around 25. A predictor that always predicts 0 is therefore
+			not a weak but a comparatively strong competitor. Additionally, it gives a better reference point for the counting metrics than the mean predictor, 
+			against which $R^2$ is defined. Every MAE reported in the following section should therefore be measured against this baseline.
 			Table~\ref{tab:gwhd_reference} gives the reference errors for all four datasets used in this section. At every point where counting metrics from 
-			different datasets are reported next to each other, the corresponding value is given in a seperate column, so that the metric can evaluated in 
+			different datasets are reported next to each other, the corresponding value is given in a separate column, so that the metric can be evaluated in 
 			relation to the baseline of the respective dataset. 
 
 			\begin{table}[htbp]
 					\centering
 					\footnotesize
-					\caption{Reference points of the four bag datasets of this stage, computed on the respective test
-					split. Counts refer to the number of positive patches per bag; \emph{rate} is the share of
-					positive among all instances. The last two columns give the mean absolute error of the two trivial
-					predictors that always return zero, respectively the mean count.}
-					\label{tab:gwhd_reference}
 					\begin{tabular}{@{}lccccccc@{}}
 						\toprule
 						\multirow{2}{*}{Bag dataset} & \multicolumn{3}{c}{Bags} & \multicolumn{2}{c}{Count} &
@@ -1080,118 +1396,119 @@ labelsep=space]{caption}
 						Reduced density     & 1000 & 200 & 200 &  4.92 &  20 & 0.050 &  4.92 /  5.40 \\
 						\bottomrule
 					\end{tabular}
-
-					\smallskip
-					\footnotesize The median count is $0$ for all four datasets, since half of the bags are negative.
+					\caption{Reference points of the four bag datasets of this stage, computed on the respective test
+					split. Counts refer to the number of positive patches per bag; \emph{rate} is the share of
+					positive among all instances. The last two columns give the mean absolute error of the two trivial
+					predictors that always return zero, respectively the mean count.}
+					\label{tab:gwhd_reference}
 				\end{table}
 
-			\subsubsection{Staring point: original GWHD-splits}
+			\subsubsection{Original GWHD-splits}
 			The first experiment applies the MNIST model unchanged to bags created from the official train-, val- and test-splits 
-			of the GWHD dataset. The result is a clear but diagnosable failure.
+			of the GWHD dataset. The model fails on these splits, but the reason can be identified.
 
-			On the bag-level the classificatore degenerates. It reaches an accuracy of 0.530 with a recall of 1.000 and 
+			On the bag-level the classifier degenerates compared to the MNIST model. It reaches an accuracy of 0.530 with a recall of 1.000 and 
 			a precision of 0.516 --- it predicts almost all bags as positive. The resulting F1-value of 0.678 is the trivial result of this degeneration
-			and no proof for performance. With this the model clearly misses the acceptance threshold of 0.9 accuracy defined in the evaluation protocol.
+			and no evidence for performance. With this the model clearly misses the acceptance threshold of 0.9 accuracy defined in the evaluation protocol.
 
 			The deciding observation is that the AUC nevertheless reaches 0.889, meaning the \textit{ranking} of the bag-scores is still good but the decision
-			threshold of 0.5 fails. The test-error of 3.22 to 4.89 compared to 0.41 on the later used new splits confirms that the predicted probabilities
-			are skewed far to one side. The part that fail here is the calibration of the scores not the capacity of the representation.
+			threshold of 0.5 for the bag classification fails. The test loss of 3.22 to 4.89 compared to 0.41 on the later used new splits confirms that the predicted 
+			probabilities are skewed far to one side. The representation works, but the calibration fails.
 
-			The counting inherits this failure directly. As the naive counting method can only count patches in positive predicted bags, a classificator
-			that nearly predicts all bags as positive, will assign a count to almost all bags --- even the empty ones. With a MEA$_{patch}$ of 25.08 compared to
+			The counting inherits this failure. As the naive counting method can only count patches in positive predicted bags, a classifier
+			that nearly predicts all bags as positive, will assign a count to almost all bags --- even the empty ones. With a MEA$_\text{patch}$ of 25.08 compared to
 			the reference error of 24.80 for the always-zero predictor, the model is slightly worse than simply predicting zero for all bags.
 			The rate of exact matches of 0.035 and $R^2_{patch}$ of 0.245 point in the same direction.
+
+			Surprisingly, the patch AUC of 0.597, although far lower than on MNIST, is still higher than the 0.552 that the same architecture 
+			later achieves on the custom splits, so the domain shift does not seem to reduce the patch separation. 
+			The failure on the official splits is therefore mainly a calibration problem.
 			
-			The cause can be found in the construction of the official splits. The GWHD-competition-split is designed to represent a domain shift and not a random split.
-			Its three subsets do not share a single recording domain: Training includes Arvalis, ETHZ, Inrae, NMBU, Rres and ULiège, validation NAU, UQ, Usask and Utokyo, 
-			Test ARC, CIMMYT, KSU, Terraref, Ukyoto as well as further UQ- and NAU-recordings. Different locations, sensors, growth stages and lighting conditions
-			are therefore strictly separated. This explains the observed pattern: a modell whose features are calibrated on the training domains keeps the 
-			relative ranking of the bags but loses teh calibration of the absolute scores. Exactly this calibartion is expected by the thresholding of
-			the bag classificator and the threshold-based counting method.
+			The cause can be found in the construction of the official splits, being designed to represent the domain shift between different recording locations.
+			Its three subsets do not share a single recording domain. Different locations, sensors, growth stages and lighting conditions
+			are therefore strictly separated. This explains the observed pattern: a model whose features are calibrated on the training domains keeps the 
+			relative ranking of the bags but loses the calibration of the absolute scores. Exactly this calibration is expected by the thresholding of
+			the bag classifier and the threshold-based counting method.
 
 			In order to test if the counting mechanism works at all --- therefore focussing on the relevant task --- the domain shift as a confounding factor
 			needs to be removed. This is the motivation for the next step. It should be expressly noted that this decision also
 			limits the scope of all subsequent results: all further results in this section are in-distribution results, and the only
 			out-of-distribution measurement is the negative result reported here.
 			
-			\subsubsection{Custom splits and patch definitions}
-			For the custom-generated splits, in which all images are merged, permutated frame by frame, and only then divided—so that the domains
+			\subsubsection{Custom splits and patch definitions}\label{sec:gwhd_new_splits}
+			For the custom-generated splits, in which all images are merged, permuted frame by frame, and only then divided—so that the domains
 			mix across the subsets while the patch pools remain disjoint -- two variants were examined. They differ in the definition of the patches. 
-			The first variant uses the grid-based definition for all patches, positive and neagtive, and labels the patches according to annotation overlap.
+			The first variant uses the grid-based definition for all patches, positive and negative, and labels the patches according to annotation overlap.
 			The second variant defines the positive patches around each bounding box. Both methods are described in Section~\ref{sec:patch_definition}.
 			In the following the two variants are referred to as \textit{grid} and \textit{centred}.
 
 			The split change fixes the bag-level completely. The accuracy increases from 0.530 to 0.910 for the grid-based and 0.900 for the centred variant, 
 			the precsion from 0.516 to 0.957 and 0.926 and the degenerated recall decreases from 1.000 to 0.860 and 0.870. Both configurations overcome 
-			the acceptance threshold of the evaluation protocol. This confirms the dignosis of the previous section: the failure on the official splits war a
+			the acceptance threshold of the evaluation protocol. This confirms the diagnosis of the previous section: the failure on the official splits was a
 			problem of generalisation and not the capacity of the model.
 
 			The counting performance becomes useable but stays weak. The absolute error decreases to 13.87 for the grid-based and 15.66 for the centred variant
-			opposite the reference errors of 24.33 and 27.06. With that the model clears two fifth of the error of the trivial-zero predictor while 
+			opposite the reference errors of 24.33 and 27.06. With that the model clears two fifths of the error of the trivial-zero predictor while 
 			it was unable to on the official splits. The accuracy of exact counting matches of 0.490 and 0.470 seem higher but are misleading,
-			because of the correctly predicted halfish of empty bags whose count is defaulted to zero. The real accuracy on positive bags
-			is closer to zero. This metric is therefore reported with this caveat from here on out.
+			because of the roughly half of the bags that are empty whose count is defaulted to zero. The real accuracy on positive bags
+			is closer to zero. This metric is therefore reported with this caveat from here on.
 
-			More insightful is the structure of the error. With a bias of -12.99 and a MAE of 13.87 or -13.65 to 15.66 the relation of $|\text{bias}/\text{MAE}$
-			reaches values of 0.94 and 0.87. Almost all of the error can therefor be attributed to a systematic underestimation and not random dispersion.
-			It is the same pattern that was observed in the MNIST experiments and it serves as the common thread running through all the following experiments.
+			More insightful is the structure of the error. With a bias of -12.99 and a MAE of 13.87 or -13.65 to 15.66 the relation of $|\text{bias}|/\text{MAE}$
+			reaches values of 0.94 and 0.87. Almost all of the error can therefore be attributed to a systematic underestimation and not random dispersion.
+			It is the same pattern that was observed in the MNIST experiments and appears in most of the following experiments.
 			
-			The comparison of the two patch definition variants is inconclusive. An AUC$_{patch}$ of 0.552 opposite 0.508 with a dispersion of 0.07 and 0.09 is not
-			does nothing to separate the two variants. Furthermore, while the grid-based variant has a lower MAE compared to the centred variant,
+			The comparison of the two patch definition variants is inconclusive. A patch-AUC of 0.552 opposite 0.508 with a dispersion of 0.07 and 0.09 does not 
+			separate the two variants. Furthermore, while the grid-based variant has a lower MAE compared to the centred variant,
 			the two datasets have different test-splits and therefore different reference errors. A comparison shows that both have a similar relative
 			position to their respective reference errors with 13.87 to 24.33 and 15.66 to 27.06. Centering the patches around the bounding boxes 
-			therefore does not bring a measureable change in any direction. Even though, the centred variant is used for all subsequent experiments,
+			therefore does not bring a measurable change in any direction. Nevertheless, the centred variant is used for all subsequent experiments,
 			because it produces cleaner patch labels.
 
-			The reason for the the continuation lies on the patch-level. With an AUC$_{patch}$ of 0.552 and 0.508 the attention weights 
+			The reason for the continuation lies at the patch-level. With a patch-AUC of 0.552 and 0.508 the attention weights 
 			separate the positive and negative patches only slightly better than random. The model recognises that a bag contains wheat ears but 
 			is unable to identify in which patches they are. As this ability is the basis for the threshold-based counting method, 
 			the following experiments will focus on the patch-level.
 
-			\subsection{Gated Attention on GWHD}
-			As described in the the fundamentals section the gated attention mechanism increases the expressiveness of the attention branch by 
-			adding a multiplicative gate $\tanh(V) \odot \sigma(U)$. On the MNIST bags both variants where indistinguishable on the bag-level and
+			\subsubsection{Gated Attention on GWHD}\label{sec:gwhd_gated}
+			As described in the fundamentals section the gated attention mechanism increases the expressiveness of the attention branch by 
+			adding a multiplicative gate $\tanh(V) \odot \sigma(U)$. On the MNIST bags both variants were indistinguishable on the bag-level and
 			therefore the ungated variant was chosen for the following experiments. As the patch-level was now identified as the bottleneck this
 			decision is re-evaluated for the counting goal on the GWHD dataset.
 			
 			The bag-level performance stays untouched with an accuracy of 0.885 to 0.900 and an AUC of 0.953 to 0.951. Similarly, the patch-level:
-			an AUC of 0.538 to 0.552 with a median-difference over five shared seeds of -0.01. The added gate does not improve the separation between
+			a patch-AUC of 0.538 to 0.552 with a median-difference over five shared seeds of -0.01. The added gate does not improve the separation between
 			the ear and background patches and the expectation for this experiment is not fulfilled. But a secondary observation can be made:
-			the gated variant delivers a more stable performance over the seeds with a AUC$_{patch}$-dispersion between 0.520 and 0.561 compared to 0.354 and 0.601 
+			the gated variant delivers a more stable performance over the seeds with a patch-AUC-dispersion between 0.520 and 0.561 compared to 0.354 and 0.601 
 			for the ungated version. Gated attention is therefore more robust in being mediocre.
 
-			The counting performance on the other hand gets worse. The MEA$_{patch}$ increases from 15.66 to 19.41 with four of the five seeds
+			The counting performance on the other hand gets worse. The MEA$_\text{patch}$ increases from 15.66 to 19.41 with four of the five seeds
 			showing worse results. With that the error gets back closer to the reference error of 27.06 and the  $R^2_{patch}$ drops from 0.346 to 0.057 meaning the 
-			perdictions barely explain the variance above the mean. More insightful is the direction of the deterioration: with -17.89 the bias
-			is the most negative up to this point with a realtion $|\text{bias}/\text{MAE}|$ of 0.92. The interpretation that fits the rest of the passage is
-			that the gate increases the selectivity of the attention mechanism and therefore sharper leading to less patches lying above the threshold of 
-			1/K. The additional expressiveness of the attention-branch worsens the threshold-based counting without improving the separateability of the patches.
+			predictions barely explain the variance above the mean. More insightful is the direction of the deterioration: with -17.89 the bias
+			is the most negative up to this point with a ratio $|\text{bias}/\text{MAE}|$ of 0.92. A likely explanation is
+			that the gate increases the selectivity of the attention mechanism, making the weight distribution sharper, so that fewer patches lie above the threshold of 
+			1/K. The additional expressiveness of the attention-branch worsens the threshold-based counting without improving the separability of the patches.
 			
-			But the experiment is not withour value. It shows that the gated attention mechanism is not productive for the current data and model configuration.
+			But the experiment is not without value. It shows that the gated attention mechanism is not productive for the current data and model configuration.
 
-			\subsubsection{Activationfunctions of the attention-mechanism}
-			Softmax norms the attnetion weights to the sum of one leading to a strong competition between the patches. At around 27\% positive patches per bag
+			\subsubsection{Activation functions of the attention-mechanism}\label{sec:gwhd_activations}
+			Softmax normalises the attention weights to the sum of one leading to a strong competition between the patches. At around 27\% positive patches per bag
 			every weight is necessarily small. This suggests that an activation that does not norm to one or an explicitly sparse activation
-			coult separate the classes better. Five activation functions were tested: softmax, sigmoid on standardised scores, bag-wise min-max normalisation,
+			could separate the classes better. Five activation functions were tested: softmax, sigmoid on standardised scores, bag-wise min-max normalisation,
 			sparsemax and entmax with learnable $\alpha$. 
 
-			Before the results are presented potention confounding factors need to be discussed. The choice of the activation function changes three things
-			in parallel. It changes the normalissation of the weights; it changes the pooling, because the bag-embedding is rescaled by the mean of the 
-			attention weights and put through a LayerNorm for the not norming variants; and thirdly the counting rule. The threshold $\theta$ is chosen
-			after the activation: $1/K$ for softmax, 0 for sparsemax and entmax, where the counting is reduced to determine the carrier size and a 
-			bag-wise calculated Otsu-threshold for min-max and sigmoid. The results in Table~\ref{tab:activation_res} therefore do not only
-			compare the activation functions but a kombination of activation and counting rule. This combination makes the resutlts 
+			Before the results are presented potential confounding factors need to be discussed. The choice of the activation function changes three things
+			in parallel. It changes the normalisation of the weights; it changes the pooling, because the bag-embedding is rescaled by the mean of the 
+			attention weights and put through a LayerNorm for the non-normalising variants; and thirdly the counting rule. The threshold $\theta$ is chosen
+			after the activation: $1/K$ for softmax, 0 for sparsemax and entmax, where the counting is reduced to determine the support size and a 
+			bag-wise calculated Otsu-threshold for min-max and sigmoid. The results in Table~\ref{tab:gwhd_activations} therefore do not only
+			compare the activation functions but a combination of activation and counting rule. This combination makes the results 
 			explainable. 
 
 			\begin{table}[htbp]
 					\centering
-					\caption{Attention activation functions on the centred variant, five seeds, median.
-					The threshold column gives the counting rule implied by the activation. All
-					rows share the reference error of $27.06$ of this dataset.}
-					\label{tab:gwhd_activations}
 					\begin{tabular}{@{}llcccc@{}}
 						\toprule
-						Activation & $\theta$ & AUC$_{\text{patch}}$ & Recall$_{\text{patch}}$
+						Activation & $\theta$ & patch-AUC & Recall$_{\text{patch}}$
 							& MAE$_{\text{patch}}$ & Bias$_{\text{patch}}$ \\
 						\midrule
 						Softmax    & $1/K$ & 0.552 & 0.395 & 15.66 & $-13.65$ \\
@@ -1199,134 +1516,449 @@ labelsep=space]{caption}
 						Min-max    & Otsu  & 0.593 & 0.432 & 15.38 & $-10.15$ \\
 						Entmax     & $0$   & 0.487 & 0.362 & 24.19 & $-7.28$ \\
 						Sparsemax  & $0$   & 0.516 & 0.043 & 25.97 & $-25.78$ \\
+						Softmax + Otsu & Otsu & 0.552 & 0.077 & 24.80 & $-24.68$ \\
 						\bottomrule
 					\end{tabular}
+					\caption{Attention activation functions on the centred variant, five seeds, median.
+					The threshold column gives the counting rule implied by the activation. All
+					rows share the reference error of $27.06$ of this dataset.}
+					\label{tab:gwhd_activations}
 				\end{table}
 			The two sparse activations fail with understandable reasons. Sparsemax sets most weights to zero and with a threshold of 0
 			all carriers of the weight distribution are counted. With a recall of 0.043 only around 4\% of the positive patches are caught and 
 			the bias of -25.78 is close to the reference error of 27.06, meaning the counting method returns almost nothing. Entmax
-			shows the same pattern in a weaker form with a recall of 0.362 but the second lowest patch precision of the series. Both variant 
+			shows the same pattern in a weaker form with a recall of 0.362 but the second lowest patch precision of the series. Both variants 
 			push the $R^2_{patch}$ into negative values, therefore beneath the performance of a trivial mean predictor. 
-			Allthough these arguments only directly speak against the combination of sparse activations and a threshold of 0, the 
-			context also alows the ruling out of the sparse activations in general. When the threshold is already set to 0 and the recall is still low,
-			is means that most of the positive patches are not recognised or are deemed unimportant for the bag classification. Therefore, 
+			Although these arguments only directly speak against the combination of sparse activations and a threshold of 0, the 
+			context also allows the ruling out of the sparse activations in general. When the threshold is already set to 0 and the recall is still low,
+			it means that most of the positive patches are not recognised or are deemed unimportant for the bag classification. Therefore, 
 			no change of the threshold can improve the counting performance. 
 
 			The best counting performance, as was the case on the MNIST bags, is achieved with the sigmoid activation. It achieves
-			the lowest MAE of 11.89 and a $R^2_{patch}$ of 0.178. It is also the only configuration where the realtion of bias to MAE with 0.46
-			falls below 0.5, meaning the error is not dominated by a systematic underestimation. At the same time this variation changes 
-			to a bag-wise adaptive Otsu-thresholding instead of the fixed $1/K$-threshold and the improvement shows precisely 
-			where an improved threshold would have an effect: the patch-recall increases from 0.395 to 0.594 while the precision stays almost unchanged
-			with 0.802 to 0.824. The counter cuts deeper and captures more positive patches
+			the lowest MAE of 11.89 and a $R^2_{patch}$ of 0.718. It is also the only configuration where the relation of bias to MAE with 0.46
+			falls below 0.5, meaning the error is not dominated by a systematic underestimation. The improvement appears
+			where an improved threshold would be expected: the recall increases to 0.594 from 0.395 while the precision stays 
+			almost unchanged at 0.802 to 0.824. This version of the counter therefore recognises more positive patches.
 			
+			Regarding the patch-level separation, the improvement is smaller. The patch-AUC increases from 0.552 to 0.655, the highest value in this section,
+			but is still too low for a reliable hard threshold. A positive patch receives a higher attention weight than a negative patch in only about two thirds
+			of the cases. Since the counting error improves more than the patch-AUC, part of the improvement probably comes from
+			the thresholding and not from the activation itself. To separate the effects the softmax configuration as a baseline was tested 
+			again with the Otsu-thresholding. The trained model 
+			is the same in both runs and the threshold-independent patch-AUC confirms it, as it is identical for all five seeds up to 
+			the third decimal. The only difference is the thresholding.
 
-			- Testing the model with the naive counting method on the GWHD dataset\
-			- First resutls show a good bag accuracy but a bad counting performance\
-			- The naive counting method is not able to seperate the positive and negative instances in the GWHD dataset\
-			\begin{figure}
-				\centering
-				\includegraphics[width=0.5\textwidth]{example-image}
-				\caption{Distribution of attention weights between positive and negative instances}
-				\label{fig:gwhd_att_weight_dist}
-			\end{figure}
+			The results contradict the expectation. The Otsu-thresholding does not improve the softmax but worsens it significantly. The MAE
+			increases to 24.80, almost reaching the reference error of 27.06, and each of the five seeds is worse, with a pairwise median difference of $+9.13$.
+			$R^2_{patch}$ becomes negative, the patch recall drops to 0.077 and the bias of -24.68 gives a relation of almost 1.0 for $|\text{bias}/\text{MAE}|$. 
+			The return of the counter is basically nothing.
+
+			The mechanism behind this problem can be concluded based on the logged thresholds. On the softmax-weight Otsu 
+			sets the median thresholds to values 2.81 times the average weight, whereas the naive rule lies at a factor 
+			of 1.0 by definition; the threshold therefore lies far too high. For the sigmoid outputs the same method sets the 
+			thresholds around 0.5, where it sensibly splits the bimodal distribution 
+			between (0,1). Softmax, on the other hand, normalises to a sum of one, resulting in a distribution that is narrow and heavily right-skewed — and
+			this shape causes a variance-based thresholding method to fail.
+
+			With that the advantage of the sigmoid activation cannot be attributed to either one of the modifications but to the combination of both.
+			What matters is that the thresholding method fits the shape of the weight distribution generated by the activation function. 
+			An adaptive thresholding method alone is not sufficient, when it is applied to an unfitting distribution.
+			Two further observations can be made following this interpretation. First, the min-max activation uses the same Otsu-thresholding
+			and, with a MAE of 15.38, does not profit from it. Its bag-wise dilation to $[0,1]$ distorts the distribution in a different way than sigmoid,
+			probably caused by the missing non-linearity of the activation function. Second, the results shown in Table~\ref{tab:gwhd_activations} 
+			are redone experiments on five seeds to achieve a more robust result. Earlier experiments on three seeds showed a reversal of the 
+			performance between softmax and sigmoid activation. It is therefore not possible to easily name one of the two modifications
+			as the better one. But what can be concluded is that simply replacing a rigid threshold with an adaptive one is not sufficient and 
+			the problem of finding the best thresholding method will be revisited in later sections of this thesis.
+
+			Nontheless, over all variations so far, the sigmoid activation with Otsu-thresholding gives an upper limit for 
+			the patch-AUC of 0.655. Even the best activation cannot clearly separate the positive and negative patches and none 
+			reaches a point where a hard threshold could work reliably.
+
+			\subsubsection{Backbone modifications}\label{sec:gwhd_backbones}
+			As the performance-bottleneck cannot be solved by the parameterisation of the attention branch or its activation alone, the 
+			features themselves are the next candidate. The original backbone with a two-layer convolutional network condenses
+			a $64\times64$ patch to $4\times4\times50$. To increase the complexity of the feature extractor, with goal of better
+			capturing the complex features of the wheat ears, four modifications were tested. Each modification is testing
+			a different assumption: group normalisation for a more stable optimisation, an increased pooling-resolution from $4\times4$ to $8\times8$
+			against the loss of spatial details, a third convolutional layer for more abstract features and a dropout layer with $p=0.25$ to prevent overfitting.
+
+			The bag-level shows a saturation effect. For all four variants the bag-AUC lies between 0.945 and 0.974 with dispersion between seeds of 0.005; there
+			is no more performance to be gained there. Noteworthy is that the dropout variant has the worst counting performance with a MAE of 15.58 while 
+			having the best bag-AUC of the section with 0.974. This shows that a better bag AUC does not necessarily lead to better counting.
+
+			Regarding the counting performance, two variants seem to help slightly. The group normalisation reaches 12.51 and the increased pooling-resolution
+			reaches 13.24 MAE compared to 15.66 from the reference configuration. Both cases are accompanied be an increased AUC of 0.619 and 0.596 and an halved bias.
+			The third convolutional layer worsens the counting performance to 17.38 MAE and moves the error profile: the bag-precision decreases to 0.789, the
+			bag-recall increases to 0.960. More depth therefore makes the model more generous rather than more accurate and the resulting small bias
+			of $-2.74$ is, once again, merely a cancellation. Two further experiments show that these differences are not caused by the modifications themselves.
+
+			The first comparison is an earlier series of the same experiments on the same
+			dataset, but with a wider model (M = 1024 and 128 feature maps instead of
+			500 and 50) and three seeds. There, the reference configuration already achieves an
+			MAE of 12.09, and no backbone variant improves upon it:
+			group normalization achieves 12.49 with 4×4 pooling and 12.50 with 8×8, the
+			increased pooling resolution alone 13.57, the third convolutional layer 13.37, and
+			dropout 17.61. Since the seeds 1, 10, and 100 are the same in both rows,
+			the comparison can be made in pairs, and the corresponding variants end up at
+			practically the same absolute level in both rows: 12.49 versus 12.51 for
+			group normalization and 13.57 versus 13.24 for pooling resolution.
+			What differs between the rows is not the variant, but the
+			reference—12.09 for the wide backbone and 15.66 for the narrower backbone.
 			
-			- Problem might lie in the more complex nature of the GWHD dataset compared to the MNIST dataset\
-			- Creating new train, val, test splits and disregarding the more difficult splits from the original dataset for bag creation\
-			- Testing the naive counting method on the new splits\
-			- No real improvement\
-			\begin{table}
+			The second experiment varies the counting rule instead of the capacity. All four
+			backbone modifications were repeated using sigmoid attention and thus the adaptive
+			Otsu threshold, while the number of feature maps was kept at 50;
+			group normalization was additionally combined with the increased
+			pooling resolution. As Table~\ref{tab:gwhd_backbones} shows, all five
+			variants then fall between 11.02 and 12.54, with the unmodified reference at 11.89
+			right in the middle of the range. The pairwise median differences range from $-0.61$ to $+1.72$ at
+			a level of about 12.00; thus, no intervention makes a difference. The instance level
+			also remains unchanged, ranging between 0.406 and 0.648 compared to 0.655 for the reference,
+			and no variant improves it.
+			
+			\begin{table}[htbp]
 				\centering
-				\begin{tabular}{|c|c|c|}
-					\hline
-					Bag size & Accuracy & AUC \\
-					\hline
-					10 & 0.95 & 0.99 \\
-					20 & 0.97 & 0.99 \\
-					50 & 0.98 & 1.00 \\
-					100 & 0.99 & 1.00 \\
-					\hline
-				\end{tabular}
-				\caption{All GWHD experiments and results with the naive counting method}
-				\label{tab:gwhd_results}
+				\footnotesize
+					\begin{tabular}{@{}lccc@{}}
+						\toprule
+						\multirow{2}{*}{Configuration} & Softmax & Softmax & Sigmoid \\
+						 & 50 maps & 128 maps & 50 maps \\
+						\midrule
+						Reference (unmodified)      & 15.66 & \textbf{12.09} & 11.89 \\
+						Group normalisation         & 12.51 & 12.49 & 11.14 \\
+						Pooling $8\times8$          & 13.24 & 13.57 & \textbf{11.02} \\
+						Group norm.\ $+$ pooling    & ---   & 12.50 & 12.28 \\
+						Third convolutional layer   & 17.38 & 13.37 & 11.07 \\
+						Dropout                     & 15.58 & 17.61 & 12.54 \\
+						\midrule
+						Range of the variants       & 12.51--17.38 & 12.49--17.61 & 11.02--12.54 \\
+						\bottomrule
+					\end{tabular}
+					\caption{The same feature-extractor modifications in three settings, median MAE over the seeds.
+					The first block uses the fixed $1/K$ threshold with $50$ feature maps, the second the same
+					threshold with $128$ feature maps and a wider embedding, the third the adaptive Otsu threshold
+					with $50$ feature maps. Only in the first block do the modifications appear to have an effect.}
+					\label{tab:gwhd_backbones}
 			\end{table}
-			- Testing different attention activation functions for better seperation of the positive and negative instances\
-			- Trying to extract more information from the data by increasing the complexity of the feature extractor\
-			 	- Adding groupnorm layers to achieve better generalization\
-			 	- Adding a third convolutional layer to increase the complexity of the feature extractor\
-			 	- Adding a dropout layer to prevent overfitting
-			- Using a greedy approach over M, num\_maps, kernel\_size and pooling to find the best hyperparameter combination for the feature extractor\
-			- All experiments show similar results leading to the only possible conclusion that the current model is not able to sufficiently seperate the positive and negative instances in the GWHD dataset based on the learned features\
-			- Conclusion: The learning signal might not be sufficient for the task at hand\
-		\subsection{Feature visualization}
-			As none of the modifications of to the model showed any real improvements in the counting performance and it could be shown that there was not possible
-			separation of the attention weights into postitive and negative, the last place to look for a problem is the backbone of the model.
-			to understand if the missing separation between the two patch classes results from the attention mechanism or exists beforehand the features output by the 
-			backbone were visualized using UMAP and the method described in Section~\ref{sec:UMAP}. This embedding of the featrues and the coloured markings of the positive and 
-			negative instances should clearly show if a linear separation of the two classes is possible. For later comparison this experiment was also done on for the MNIST dataset
-			as this the model showed very good separation for the task on that dataset. The visualisations should therefore be drastically different, similar to the 
+
+			These three settings together determine the outcome. The apparent backbone effect
+			occurs exclusively when a fixed 1/K threshold is combined with a narrow
+			backbone; a wider backbone eliminates it, as does the sigmoid variant.
+			However, an adaptive threshold alone is not sufficient: Under Softmax with
+			an Otsu threshold, the increased pooling resolution of 17.34 versus 24.80
+			makes a significant difference again. Where the selection rule does not
+			match the weight distribution, the backbone once again acts as a compensating factor. The modifications
+			do not improve the representation; they compensate for a mismatch
+			between the shape of the attention distribution and a threshold that cannot
+			adapt to it. The third convolutional layer is the worst variant with Softmax (17.38)
+			and one of the best with Sigmoid (11.07), outperforming its Softmax counterpart in
+			all five seeds.
+			
+			This is most clearly demonstrated by the increased pooling resolution, as it is the only
+			modification for which all three selection rules from Section~\ref{sec:gwhd_activations} were successfully done. With
+			Softmax and a fixed threshold, it achieves 13.24, thereby improving upon its baseline
+			of 15.66; with Softmax and the Otsu threshold, it achieves 17.34 compared to a
+			baseline of 24.80, so it also improves, but from a much worse
+			starting point; and with Sigmoid and Otsu, it achieves 11.02 compared to 11.89,
+			where the improvement is virtually negligible. The instance AUC is again identical between the two
+			Softmax runs, at 0.596. The same architectural
+			change is worth $-2.4$, $-7.5$, or $-0.9$ in absolute error, depending on how
+			the number is read from the attention weights. The counting rule therefore has a 
+			larger influence on the result than the backbone.
+
+			A secondary result from the sigmoid control series is that the bias is no longer consistently negative for the first time. 
+			In combination with the increased pooling resolution,
+			the bias drops to $-0.50$ with a MAE of 11.02, a ratio of
+			0.05, and in combination with group normalization and increased pooling, it
+			even becomes positive at $+4.61$. Since the individual seeds of the first variant range from $-10.84$
+			and $+5.08$, the correct conclusion is not that the bias has been eliminated,
+			but rather that the counting error no longer has a consistent sign: A
+			systematic underestimation becomes a seed-dependent over- or underestimation. This
+			fits into the overall picture, in which the sign of the counting error is determined by the
+			threshold rule and not by the representation.
+
+			When measuring against the criterion of instance separability, this section shows no result. 
+			Across all nine backbone configurations the patch AUC lies between 0.406 and 0.648, which is entirely 
+			within the range already achieved by the activation variants. Changes to the backbone architecture do not improve the separation:
+			neither more depth, a higher spatial resolution, normalisation nor regularisation improves
+			the separation of background and ear patches. All modifications only change the counting error and the error profile
+			and both depend more on the counting rule than on the features themselves, as far as that can be concluded at this point.
+
+			\subsubsection{Backbone dimensions and Greedy-search}
+			Up to this point, only the structure of the feature extractor was modified. Its dimensions, however, were
+			kept untouched: kernel size, number of feature maps and pooling resolution were kept at their default values.
+			This section will therefore investigate the possible performance gain in this regard.
+
+			\textbf{Single-parameter tests}. Starting from the base configuration, each of the
+			three parameters was altered individually, while all others remained unchanged, with five seeds per run.
+				\begin{table}[htbp]
+					\centering
+					\footnotesize
+					\label{tab:gwhd_dims}
+					\begin{tabular}{@{}lcccc@{}}
+						\toprule
+						Configuration & patch-AUC & min--max & $\Delta$ & MAE$_{\text{patch}}$ \\
+						\midrule
+						Base (kernel $5$, pooling $4\times4$, $M=500$) & 0.632 & 0.568--0.634 & --- & 12.69 \\
+						kernel $7$ only          & 0.550 & 0.451--0.622 & $-0.082$ & 15.09 \\
+						kernel $9$ only          & 0.459 & 0.313--0.589 & $\mathbf{-0.172}$ & 17.99 \\
+						pooling $8\times8$ only  & 0.580 & 0.507--0.688 & $-0.052$ & 13.78 \\
+						$M=1024$ only            & 0.637 & 0.520--0.648 & $\mathbf{+0.005}$ & 13.04 \\
+						\bottomrule
+					\end{tabular}
+					\caption{Dimensions of the feature extractor varied one at a time, five seeds, median over the
+					seeds. $\Delta$ is the change in instance-level AUC relative to the base configuration.}
+				\end{table}
+
+			Only the kernel size affects the patch AUC, and it causes it to decrease: Kernel 9 costs 0.172 and is therefore clearly outside the seed scatter of the
+			base configuration. The pooling resolution costs 0.052 with fully overlapping ranges, and doubling the embedding dimension has no effect, with
+			+0.005. The kernel size therefore remains at 5 and is excluded from the continued search space; pooling resolution and embedding dimension 
+			are included because, while their individual effects are not detectable, the possibility of interaction between them remains open.
+			Added to this is the number of feature maps, which has not been specifically varied in any experiment to this point.
+			
+			A limitation of these runs is that they were done on an older version of the dense
+			dataset, which contains 100 rather than 200 test bags and has a reference error of 24.05 rather than
+			27.06; the counting errors are therefore only comparable with one another. But the results are still a valid indicator.
+			
+			\textbf{Greedy search}. It remains possible that none of the parameters has an effect on its own,
+			but that a combination of them does. As a full grid is too computationally expensive, a greedy search was performed across the number of feature maps, the
+			pooling resolution and the embedding dimension, as described in Section~\ref{sec:greedy}. The
+			target function follows the selection criterion: it weights bag-AUC and patch-AUC equally 
+			and subtracts their standard deviation across the seeds, thereby rewarding both separability and stability. The counting error is not
+			taken into account, as it is the secondary measure in the current experiments.
+
+			The result is that the patch AUC does not significantly move in either direction, staying constant. Across all twelve configurations
+			tested in the search, it ranges from 0.5052 to 0.5623, thus spanning a range of 0.057. The configuration selected by the search 
+			(64 feature maps, 8×8 pooling) is therefore not clearly better than the others. Because the search varied all three dimensions 
+			over two rounds, it also excludes that an unfavourable combination of these parameters causes the low patch AUC. 
+
+			\begin{table}[htbp]
+					\centering
+					\scriptsize
+					\label{tab:gwhd_greedy}
+					\begin{tabular}{@{}llccccccc@{}}
+						\toprule
+						\# & varied & maps & pool & $M$ & AUC & patch-AUC & Score & MAE$_{\text{patch}}$ \\
+						\midrule
+						t000 & --- & 50 & 4 & 500 & 0.9507 & 0.5082 & 0.7226 & 17.35 \\
+						\midrule
+						t001 & maps & \textbf{64}\,\checkmark & 4 & 500 & 0.9564 & 0.5434 & \textbf{0.7437} & 15.50 \\
+						t002 & maps & 128 & 4 & 500 & 0.9564 & 0.5052 & 0.7218 & 14.97 \\
+						t003 & maps & 256 & 4 & 500 & 0.9557 & 0.5241 & 0.7351 & 14.22 \\
+						\midrule
+						t004 & pool & 64 & 6 & 500 & 0.9496 & 0.5254 & 0.7304 & \textbf{11.62} \\
+						t005 & pool & 64 & \textbf{8}\,\checkmark & 500 & 0.9535 & 0.5475 & \textbf{0.7450} & 13.09 \\
+						\midrule
+						t006 & $M$ & 64 & 8 & 250 & 0.9346 & \textbf{0.5623} & 0.7396 & 14.28 \\
+						t007 & $M$ & 64 & 8 & 1024 & 0.9515 & 0.5279 & 0.7381 & 15.07 \\
+						t008 & $M$ & 64 & 8 & 2048 & 0.9464 & 0.5176 & 0.7284 & 14.00 \\
+						\midrule
+						t009 & maps (r.2) & 128 & 8 & 500 & 0.9476 & 0.5366 & 0.7351 & 12.05 \\
+						t010 & maps (r.2) & 256 & 8 & 500 & 0.9476 & 0.5106 & 0.7238 & 14.46 \\
+						\midrule
+						final & 5 seeds & 64 & 8 & 500 & 0.9530 & 0.5417 & 0.7424 & 13.63 \\
+						\bottomrule
+					\end{tabular}
+					\caption{The results of the greedy search in chronological order. The target function is
+					$0.5\,\mathrm{AUC} + 0.5\,\mathrm{AUC}_{\text{patch}} - 0.3(\sigma_{\mathrm{AUC}} +
+					\sigma_{\text{patch}})$; \checkmark\ marks the accepted value of each coordinate.}
+				\end{table}
+
+			The second component of the objective function contributes even less: the bag-AUC
+			varies across all twelve trials only between 0.9346 and 0.9564 and is therefore saturated, as already noted in the preceding sections. The composite
+			score consequently ranges between 0.72 and 0.745, and the change that the
+			search identifies as an improvement — feature maps from 50 to 64, pooling from 4 × 4
+			to 8 × 8 — falls within this range. The search has therefore made no mistake. It searched at the correct scale and found nothing within the space explored
+			that could be distinguished from noise.
+
+			This is a standalone argument and not merely a repetition of the
+			previous sections. There, individual adjustments were made manually and
+			checked one by one. Here, a systematic procedure searches three dimensions
+			of the feature extractor simultaneously and over two rounds. The fact that this approach
+			fails to raise the instance AUC above the known range, indicates that the bottleneck does not
+			lie in an ill-chosen combination of backbone dimensions.
+
+			The counting MAE behaves differently from the target measure: it varies across the
+			trials from 11.62 to 17.35, and thus shows significantly greater variation than the patch AUC. This
+			is not a weakness of the search, but precisely the pattern that runs through the entire
+			chapter. The count performance depends on the counting rule, while separability has not shown dependency on any
+			factor except the activation function. As the count error is not
+			included in the objective function, the chosen final configuration is not
+			optimised in this respect either; it achieves 13.63, placing it in the middle of the
+			range of trials. A supplementary search that optimises the count error could help in that regard, but
+			with the patch AUC remaining constant, the MAE would be built on a flawed representation and therefore not be a reliable measure of the model's performance.
+
+			Two caveats need to be mentioned. Firstly, the greedy search algorithm reads the
+			target metric from the parent run and thus from the test metrics. The chosen
+			configuration is therefore not validated independently. This is an artefact of the already mentioned selection method based on the 
+			test metrics instead of the validation metrics. Secondly, the resolution of the
+			search is limited by the three seeds — it would not have been able to distinguish
+			small real differences from noise. This is irrelevant for the conclusion drawn here,
+			as it is based on the range across all trials and not on a single comparison.
+
+			Overall the greedy search experiments line up with the previous results: The patch AUC is saturated and cannot be improved any 
+			further by modifications to the backbone.
+
+			\subsubsection{Reduced positive density}
+			A final effort to improve separability was to tackle the problem from the data side. 
+			If around 27 \% of all patches are positive, a bag can already be identified as positive based on
+			its coarse texture, and the model never has to locate individual positive patches or concrete wheat ears. 
+			Reducing the proportion of positive patches to around 5 \%,
+			by ensuring that the number within a positive bag is evenly distributed between one and twenty
+			rather than between one and the bag size, makes the MIL problem more difficult,
+			and the expectation was that this would force the model to learn the patches more
+			accurately.
+
+			The intervention fails on both counts. The bag classification collapses, with an accuracy of 0.690 and an AUC of 0.757
+			compared with 0.900 and 0.951, meaning that the configuration no longer fulfills the
+			acceptance criterion of the evaluation protocol: with five positive patches out of a hundred, the averaging attention pooling loses the
+			signal. At the same time, the patch-level performance does not improve, with a patch-AUC of 0.617,
+			which falls within the same range as the group normalisation and sigmoid variants on
+			the simpler dataset. The patch precision plummets to 0.256, the lowest value in the entire series, meaning that three out of four
+			patches classified as positive are actually background; the bag precision of 0.683 also indicates
+			furthermore that around one-third of the bags predicted as positive
+ 			contain no ears at all.
+
+			The counting performance falls below that of the trivial predictor. With patch MAE = 5.26 compared with a reference error of 4.92, 
+			the model is once again worse than the always-zero predictor, with R$^2_{patch}$ = $-0.525$ and an exact hit rate of 0.355. The distribution
+			across the seeds is bimodal, with three seeds clustered around 4 to 5 and two collapsing to 22
+			and 25.
+
+			From a mechanistic point of view, the sign of the bias is the most important observation: it reverses
+			from $-13.65$ in the dense dataset to $+3.29$. An underestimation thus becomes
+			an overestimation. The threshold rule remains unchanged, and a fixed threshold
+			of 1/K selects an approximately constant number of instances. As long as 27\%
+			of the instances are positive, this is too few. At 5 \%, the same
+			behaviour is too many. The threshold does not adapt to the target density.
+
+			Overall, the intervention has failed to achieve the hoped effect of forcing the model to learn the two-class features more accurately. 
+			Additionally, the bag-level performance is no longer sufficient to meet the acceptance criterion.
+
+			\subsubsection{Interim discussion}\label{sec:gwhd_interim}
+
+			None of the seven interventions in this section achieved the intended improvement of
+			the instance level. Taken together, however, they narrow down where the problem lies,
+			and five conclusions can be drawn.
+
+			Firstly, the bag level is resolved and saturated. Once the domain shift of the official
+			splits is removed, the bag accuracy rises from 0.530 to 0.900 and above, and the bag AUC
+			lies between 0.943 and 0.974 across all configurations, with a dispersion over the seeds
+			of about 0.005. Only the dataset with reduced positive density falls below the acceptance
+			threshold again. The bag performance carries no information about the instance level, as
+			the dropout variant shows by combining the highest bag AUC (0.974) with one of the weakest
+			counting results. This justifies selecting configurations by their instance separability.
+
+			Secondly, the instance level is the bottleneck. Neither the patch definition, gated
+			attention, the activation function, the backbone modifications nor the greedy search moves
+			the median patch-AUC beyond the range of 0.406 to 0.655, compared with 0.92 to
+			0.95 on the MNIST bags. In the greedy search, the range across all trials is smaller than
+			the dispersion of a single configuration across its seeds.
+
+			Thirdly, the counting error is systematic, and its size and sign are determined by the
+			counting rule, i.e.\ the combination of attention activation and threshold. With softmax,
+			$|\mathrm{Bias}|/\mathrm{MAE}$ lies between 0.87 and 0.94. It only drops where activation
+			and threshold match, as with sigmoid and Otsu (0.46). The fixed $1/K$ threshold selects an
+			approximately constant number of patches, which is why the bias reverses from $-13.65$ to
+			$+3.29$ on the dataset with reduced density.
+
+			Fourthly, the capacity of the feature extractor is not the limiting factor. The backbone
+			modifications only appear effective in combination with the fixed threshold and the narrow
+			backbone (Table~\ref{tab:gwhd_backbones}); % CHECK (currently Table 11)
+			their order changes with the activation, and none of them raises the patch-AUC.
+			They shift the attention distribution relative to the threshold rather than improving the
+			separation.
+
+			Fifthly, the section therefore separates two distinct limitations. The counting error is a
+			read-out problem that can be addressed directly, for instance by a threshold calibrated on
+			the validation split or by a soft count. The instance separability, on which any such rule
+			operates, remains capped at 0.655 regardless of the attention branch and the capacity of the
+			backbone. That the two are distinct is shown by configurations that count better without
+			separating better, such as group normalisation with increased pooling and sigmoid, which
+			reaches an MAE$_{\text{patch}}$ of 12.28 with a patch-AUC of only 0.406.
+
+			The open question is therefore whether the features learnt under bag supervision carry the
+			information needed to separate ear and background patches at all, or whether the limitation
+			lies in the data itself. The feature extractor is kept in its default configuration from
+			here on, and two diagnostic steps follow before the architecture is changed: the
+			visualisation of the feature space in Section~\ref{sec:feature_vis} % CHECK
+			and the supervised patch classifier in Section~\ref{sec:sup_class}, % CHECK
+			which gives a practical reference ceiling for the separability achievable on the same
+			patches with the same backbone. Based on these results, the CLAM-based model in
+			Section~\ref{sec:clam_results} % CHECK
+			introduces an explicit instance-level training signal.
+
+		\subsection{Feature visualisation}\label{sec:feature_vis}
+			As none of the modifications of the model showed any real improvements in the instance separation this section will investigate whether the
+			features learnt under bag supervision carry a signal that allows for the separation of the two patch classes. For that purpose the
+			features output by the 
+			backbone were visualized using UMAP and the method described in Section~\ref{sec:UMAP}. This embedding of the features and 
+			the coloured markings of the positive and 
+			negative patches should illustrate whether a separation of the two classes is possible. For later comparison this experiment was also carried out on MNIST,
+			where the model showed very good separation for the task on that dataset. The visualisations should therefore be drastically different, similar to the 
 			level of the attention weights, if the problem already exists before the attention layer. Should there be no visible separation possibility, there can only be 
-			two last reasons for the problem: the model in its form, betting only on the bag loss training signal, is not enough to learn patch level separation or 
-			there is a problem with the dataset. 
+			two last reasons for the problem: the model in its  current form, using only the bag loss as the training signal, is not enough to learn patch level separation or 
+			the dataset does not provide a sufficient signal for the model to learn the separation.
 
 			The results of the feature visualisation are shown in Figure~\ref{fig:umap_vis} but the plots have no quantifying 
 			abilities and are only used as visual aids to better understand the feature space. As can be seen from the plots there is a clear difference 
 			in the distribution of the feature vectors. The results on the MNIST dataset show a clear separation between the positive and negative patches. Even further,
-			the class-intern distribtion are distinct between positives and negatives. The positives cluster closer together while the negatives spread further apart. 
+			the within-class distribution are distinct between positives and negatives. The positives cluster closer together while the negatives spread further apart. 
 			This can be expected as the variation for the patches of the number 9 should be very little in contrast to all the other numbers accumulated in the negative class.
 			In contrast, the feature visualisation of the GWHD features does not show a clear separation of the two classes. Here, both classes have similar levels
 			of dispersion, which makes sense considering that the only significant difference in the build-up of the different class patches, are the wheat ears 
 			in the positive	patches. The background, dominating most of all patches, is very similar for all patches, which could explain that difference to the
-			MNIST results. Additionally, there is a significant overlap between the space of the two classes, which shows the reason for the poor counting performance 
-			of the model. When the input to the attention layer is already flawed, regarding the separation of the two classes, no tweaking of its architecure can 
-			help solve that problem. 
-			
-			As the other plots show, the different modifications to the backbone did not improve the separation in the feature space, making their investigation moot.
-
-			The interesting part about this result is that, even though the model is not capable to separate the patches, the performance of the bag prediction is 
-			still equally as good, as it was on the MNIST dataset. This leads to the conclusion that the bag label prediction does not need perfect feature separation
-			and that it works on another level. It seems to abstract the whole bag, rather than each patch individual, and therefore reaches a saturating bag label
+			MNIST results. Additionally, there is a significant overlap between the space of the two classes, which, together with the low patch AUC, indicates the
+			reason for the poor counting performance of the model. When the input to the attention layer is already flawed, regarding the separation 
+			of the two classes, no tweaking of its architecture can help solve that problem. 
+		
+			The interesting part about this result is that, even though the model is not capable of separating the patches, the performance of the bag prediction is 
+			still as good as it was on the MNIST dataset. This leads to the conclusion that the bag label prediction does not depend on perfect feature separation.
+			It seems to abstract the whole bag, rather than each patch individually, and therefore reaches a saturating bag label
 			performance without needing to separate the patches. The question that needs to be answered now is, does the problem only lie with the model or 
 			is there an additional problem with the used dataset. If the dataset does not offer the possibility of a learnable separation between the two classes of patches, 
-			than the problem the proposed method is trying to solve, is impossible from the beginning. In order to exclude the possibility of a problem with the dataset the 
-			next section will give a upper limit for the patch-level AUC.
+			then the problem the proposed method is trying to solve, is impossible from the beginning. In order to exclude the possibility of a problem with the dataset the 
+			next section will give an upper limit for the patch-level AUC.
 			
 			\begin{figure}
 				\begin{subfigure}{0.5\textwidth}
 					\centering
-					\includegraphics[width=0.5\textwidth]{example-image}
-					\caption{MNIST}
+					\includegraphics[width=0.5\textwidth]{figures/feature_vis_mnist.png}
+					\caption{MNIST (3 seeds)}
 					\label{fig:umap_vis_mnist}
 				\end{subfigure}
 				\begin{subfigure}{0.5\textwidth}
 					\centering
-					\includegraphics[width=0.5\textwidth]{example-image}
-					\caption{GWHD}
+					\includegraphics[width=0.5\textwidth]{figures/feature_vis_gwhd.png}
+					\caption{GWHD (5 seeds)}
 					\label{fig:umap_vis_gwhd}
 				\end{subfigure}
 				\caption{UMAP visualization of the learned features of the feature extractor}
 				\label{fig:umap_vis}
 			\end{figure}
-		\subsection{Supervised baseline classificator}
-			To generate an upper limit for the seperation performance of the positive and negative patches a supervised classifcator is needed in order
-			to achieve circumstances with the best possible performance. For that purpose the output standard backbone of the attention-based MIL model was 
-			was used as input for two fully conectey layer that output a single prediction value for each patch. This allows for a clear evaluation of 
-			the separation performance achievable on the GWHD dataset. The result show that over mulitple seeds the average performance measured by
-			the AUC lies at around 0.9. Again, under perfect conditions the achievable preformance is great, but the limiting factors given for the proposed method
-			propose continuing challenges. As this result shows, the problem lies in the fact, that the current model saturates in its bag level performance
-			before being able to learn distinct patch features that would allow the separation of the two classes of patches. In other words, the learning signal
-			provided by the bag label loss is not strong enough to force the model to learn separateable features for the patches. 
 
-			With this knowledge and having exhausted all possibilities of minor modifications the attenion-based MIL model, meaning a new model structure 
-			is needed. The idea for this new model architecture existed already at the beginning of working on this thesis, as possible 
-			extensions of the base model were discussed. The addition of the self-supervised patch-level task on a parallel branch to the attention mechansim,
-			which would force the model to directly learn discriminative patch features. The implementation of this idea is the CLAM-based model proposed in this thesis.
-		\subsection{CLAM based model}
+		\subsection{Supervised baseline classifier}\label{sec:sup_class}
+			To generate an upper limit for the separation performance of the positive and negative patches a supervised classifier is needed in order
+			to achieve circumstances with the best possible performance. For that purpose the output of the standard backbone of the attention-based MIL model 
+			was used as input for two fully connected layers that output a single prediction value for each patch. This allows for a clear evaluation of 
+			the separation performance achievable on the GWHD dataset. The results are that over 5 seeds the median separation performance measured by
+			the AUC is 0.909. Again, under supervised conditions the achievable performance is great, but the limiting factors of the proposed method remain.
+			As this result shows, the problem seem to stem from the fact that the current model saturates in its bag level performance
+			before being able to learn distinct patch features that would allow the separation of the two classes of patches. In other words, the learning signal
+			provided by the bag label loss is not strong enough to force the model to learn separable features for the patches. 
+
+			Since the possibilities for minor modifications of the attention-based MIL model are exhausted, a new model structure is needed. 
+			The idea for this new model architecture existed already at the beginning of working on this thesis, as possible 
+			extensions of the base model were discussed. The idea is to add a patch-level task on a branch parallel to the attention mechanism, 
+			trained on pseudo-labels, which forces the model to learn discriminative patch features directly. The implementation of this idea is the CLAM-based model proposed in this thesis.
+
+		\subsection{CLAM based model}\label{sec:clam_results}
 			- The CLAM based model is able to directly learn more discriminative features\
 			- Leads to a better classification AUC
 			\begin{figure}
 				\centering
 				\includegraphics[width=0.5\textwidth]{example-image}
-				\caption{AUC progression from baseline AttentionMIL (GWHD/MNIST) to CLAM to supervised baseline classificator}
+				\caption{AUC progression from baseline AttentionMIL (GWHD/MNIST) to CLAM to supervised baseline classifier}
 				\label{fig:AUC_progression}
 			\end{figure}
 			- Problem: While the AUC is high, there is a high payoff between precision and recall leading to a bad counting performance dur to missing a lot of positive instances\
@@ -1381,4 +2013,48 @@ labelsep=space]{caption}
 	
 	\newpage
 	\printbibliography
+	\appendix
+	\section{Additional Material}
+				\begin{table}[htbp]
+					\centering
+					\footnotesize
+					\caption{All configurations of the GWHD transfer stage, five seeds, median over the seeds.
+					MAE$^{\text{zero}}$ repeats the error of the always-zero predictor on the dataset of the
+					respective row, taken from Table~\ref{tab:gwhd_reference}, so that every absolute error can be
+					read against its own reference. The upper block varies the data, the middle block the
+					attention mechanism and its activation, the lower block the feature extractor. Configurations
+					marked with $\dagger$ use the adaptive Otsu threshold, all others the fixed threshold of $1/K$ or,
+					for the sparse activations, of zero.}
+					\begin{tabular}{@{}lcccccc@{}}
+						\toprule
+						Configuration & Accuracy & AUC & patch-AUC
+							& MAE$_{\text{patch}}$ & MAE$^{\text{zero}}$ & Bias$_{\text{patch}}$ \\
+						\midrule
+						Original splits          & 0.530 & 0.889 & 0.597 & 25.08 & 24.80 & $-1.11$ \\
+						New splits, grid         & 0.910 & 0.965 & 0.508 & 13.87 & 24.33 & $-12.99$ \\
+						New splits, centred      & 0.900 & 0.951 & 0.552 & 15.66 & 27.06 & $-13.65$ \\
+						Reduced density          & 0.690 & 0.757 & 0.617 &  5.26 & 4.92 & $+3.29$ \\
+						\midrule
+						Gated attention          & 0.885 & 0.953 & 0.538 & 19.41 & 27.06 & $-17.89$ \\
+						Sigmoid$^\dagger$        & 0.915 & 0.959 & 0.655 & 11.89 & 27.06 & $-5.48$ \\
+						Min-max$^\dagger$        & 0.905 & 0.953 & 0.593 & 15.38 & 27.06 & $-10.15$ \\
+						Entmax                   & 0.870 & 0.943 & 0.487 & 24.19 & 27.06 & $-7.28$ \\
+						Sparsemax                & 0.845 & 0.916 & 0.516 & 25.97 & 27.06 & $-25.78$ \\
+						Softmax, Otsu$^\dagger$  & 0.900 & 0.951 & 0.552 & 24.80 & 27.06 & $-24.68$ \\
+						\midrule
+						Group normalisation      & 0.915 & 0.958 & 0.619 & 12.51 & 27.06 & $-7.50$ \\
+						Pooling $8\times8$       & 0.885 & 0.945 & 0.596 & 13.24 & 27.06 & $-9.47$ \\
+						Third conv.\ layer       & 0.855 & 0.965 & 0.570 & 17.38 & 27.06 & $-2.74$ \\
+						Dropout                  & 0.895 & 0.974 & 0.542 & 15.58 & 27.06 & $-9.76$ \\
+						\midrule
+						Group norm.$^\dagger$    & 0.920 & 0.966 & 0.612 & 11.14 & 27.06 & $-4.46$ \\
+						Group norm.\ $+$ pool.$^\dagger$ & 0.895 & 0.957 & 0.406 & 12.28 & 27.06 & $+4.61$ \\
+						Pooling $8\times8^\dagger$ & 0.875 & 0.951 & 0.648 & 11.02 & 27.06 & $-0.50$ \\
+						Third conv.\ layer$^\dagger$ & 0.890 & 0.964 & 0.607 & 11.07 & 27.06 & $-7.66$ \\
+						Pooling $8\times8$, sm+Otsu$^\dagger$ & 0.885 & 0.945 & 0.596 & 17.34 & 27.06 & $-15.38$ \\
+						Dropout$^\dagger$        & 0.890 & 0.962 & 0.593 & 12.54 & 27.06 & $-8.07$ \\
+						\bottomrule
+					\end{tabular}
+					\label{tab:gwhd_results}
+				\end{table}
 \end{document}
