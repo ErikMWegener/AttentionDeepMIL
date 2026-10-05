@@ -606,8 +606,9 @@ def compute_train_positive_fraction(train_loader):
 
 def _log_grayscale_metrics(model, epoch):
     """Log the learned RGB->gray weights and their similarity to reference conversions."""
-    gray = getattr(model, "grayscale_layer", None)
-    if not isinstance(gray, LearnedGrayscale):
+    # The layer lives inside the backbone (model.backbone.grayscale_layer), so search all submodules
+    gray = next((m for m in model.modules() if isinstance(m, LearnedGrayscale)), None)
+    if gray is None:
         return
 
     w = gray.normalized_weights()               # tensor([r, g, b])
