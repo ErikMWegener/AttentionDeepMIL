@@ -96,13 +96,14 @@ the same or a neighbouring version. OpenCV is only needed for `eval/figures/`.
 
 ## Data
 
-Copy the folders from the USB stick into the repository so that the paths below exist.
-All scripts use paths relative to the repository.
+The USB stick contains a clone of this repository with the data in place. To use the
+data with another checkout, copy the folders so that the paths below exist; all scripts
+use paths relative to the repository.
 
 ```
 data/datasets/
   MNIST/                       MNIST (as downloaded by torchvision)
-  gwhd_2021/                   GWHD 2021: images/ and competition_{train,val,test}.csv
+  gwhd_2021/                   GWHD 2021: images/ and competition_{train,val,test}.csv (not on the stick)
   drone/2025_wheat_heads_datasets/   point-annotated drone tiles (real_data/...) and synthetic images
   drone/2026_wheat_heads_datasets/   drone flights before / after ear emergence (Drone_BBG)
   bags/                        bag files (HDF5)
@@ -110,6 +111,19 @@ runs/mlflow.db, runs/mlruns/   MLflow results of all experiments
 models/state_dicts/            trained weights (CLAM models of the full-image evaluation,
                                pretrained backbones)
 ```
+
+Not on the USB stick, to keep it below 32 GB:
+
+- the GWHD 2021 images (10.4 GB). They are public:
+  [Zenodo record 5092309](https://zenodo.org/records/5092309) (images and
+  `competition_{train,val,test}.csv`, place them in `data/datasets/gwhd_2021/`). They are
+  only needed to regenerate the GWHD bags and for `eval/figures/`; all GWHD bag files are
+  on the stick.
+- the model files that MLflow logged with every run (`runs/mlruns/<experiment>/models/`,
+  4.1 GB). No script reads them; the trained models used for the full-image evaluation
+  are in `models/state_dicts/`. The MLflow UI therefore lists these logged models without
+  their files.
+- drone flights that were recorded but not used in the thesis.
 
 After copying `runs/mlflow.db` and `runs/mlruns/`, run `python runs/relocate_mlflow_db.py`
 once from the repository root. MLflow stores absolute artifact paths, and the script
@@ -127,7 +141,7 @@ The bag datasets of the thesis (table "Overview of the bag datasets") and where 
 | GWHD, custom splits, grid | `gwhd_bags.h5` : `gwhd_bags` | `create_gwhd_bags.py` |
 | GWHD, custom splits, centred | `gwhd_bags_dense.h5` | see [Notes](#notes-and-known-limitations) |
 | GWHD, centred, colour | `gwhd_bags_color.h5` | like the centred dataset, without `--grayscale` |
-| GWHD, centred, earlier | `gwhd_bags.h5` : `gwhd_bags_dense`; colour variant in `gwhd_bags_2026-05-19.h5` : `gwhd_bags_dense_color` | recorded calls in `create_datasets.sh` (earlier script version) |
+| GWHD, centred, earlier | `gwhd_bags.h5` : `gwhd_bags_dense`, colour variant `gwhd_bags_dense_color` | recorded calls in `create_datasets.sh` (earlier script version) |
 | GWHD, reduced density | `gwhd_reduced_pos.h5` | see Notes |
 | Synthetic | `synth_bags_shuffled.h5` | `create_synth_bags.py` |
 | Drone_BBG | `drone_bags.h5` : `drone_128_bags` | `create_drone_bags.py` |
@@ -246,12 +260,12 @@ python -m pytest testing/
   the USB stick are the ones used in the thesis. The recorded calls are in
   `data/data_management/create_datasets.sh`.
 - **Reduced density.** No script in this repository creates `gwhd_reduced_pos.h5`.
-- **Earlier GWHD file.** The experiments from May 2026 (`attention_gwhd_optimization*`,
-  `first_results`, `sigmoid_v_softmax`, `gwhd_model_parameter_sweep`) read
-  `bags/gwhd_bags.h5` before it was replaced on 2026-06-06. That earlier version is
-  provided as `gwhd_bags_2026-05-19.h5`; its groups `gwhd_bags` and `gwhd_bags_dense`
-  match the current file (spot check of 30 bags each), and it additionally contains the
-  colour groups.
+- **GWHD file of May 2026.** `bags/gwhd_bags.h5` on the stick is the version of
+  2026-05-19 with the groups `gwhd_bags`, `gwhd_bags_dense`, `gwhd_bags_color` and
+  `gwhd_bags_dense_color`. The experiments from May 2026 (`attention_gwhd_optimization*`,
+  `first_results`, `sigmoid_v_softmax`, `gwhd_model_parameter_sweep`) read this file. In
+  June the two colour groups were deleted from the local copy; the remaining groups are
+  identical bag for bag, so the later experiments read the same data.
 - **MNIST validation split.** Validation and test bags are drawn from the MNIST test set
   with the same seed and are therefore identical. The MNIST experiments use AbMIL, which
   tests the model after the last epoch, so the validation split is only logged there.
