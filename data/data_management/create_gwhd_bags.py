@@ -130,6 +130,13 @@ def extract_box_patches(bbox, img_w, img_h, patch_size=28, stride=28, threshold=
     return coords
 
 def generate_patch_definitions(metadata, patch_size=28, stride=28, dense=False, overlap_threshold=0.5):
+    """Positive and negative patch pools (image, crop coordinates, label) without pixel data.
+
+    Grid mode (``dense=False``, used from the command line): a patch on the regular
+    grid is positive if a box covers at least ``overlap_threshold`` of it.
+    ``dense=True`` adds centred patches per box (``extract_box_patches``); it is not
+    reachable from the command line in the current version (see README, "Notes").
+    """
     positive_patches = []
     negative_patches = []
 

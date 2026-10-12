@@ -127,7 +127,7 @@ The bag datasets of the thesis (table "Overview of the bag datasets") and where 
 | GWHD, custom splits, grid | `gwhd_bags.h5` : `gwhd_bags` | `create_gwhd_bags.py` |
 | GWHD, custom splits, centred | `gwhd_bags_dense.h5` | see [Notes](#notes-and-known-limitations) |
 | GWHD, centred, colour | `gwhd_bags_color.h5` | like the centred dataset, without `--grayscale` |
-| GWHD, centred, earlier | `gwhd_bags.h5` : `gwhd_bags_dense`; colour variant in `gwhd_bags_2026-05-19.h5` : `gwhd_bags_dense_color` | see Notes |
+| GWHD, centred, earlier | `gwhd_bags.h5` : `gwhd_bags_dense`; colour variant in `gwhd_bags_2026-05-19.h5` : `gwhd_bags_dense_color` | recorded calls in `create_datasets.sh` (earlier script version) |
 | GWHD, reduced density | `gwhd_reduced_pos.h5` | see Notes |
 | Synthetic | `synth_bags_shuffled.h5` | `create_synth_bags.py` |
 | Drone_BBG | `drone_bags.h5` : `drone_128_bags` | `create_drone_bags.py` |
@@ -239,10 +239,12 @@ python -m pytest testing/
 
 ## Notes and known limitations
 
-- **Centred GWHD patches (`--dense`).** `create_gwhd_bags.py` parses `--dense` but does
-  not pass it on to `generate_patch_definitions`, so the centred patch definition is not
-  reachable from the command line. The centred datasets (`gwhd_bags_dense*`) on the USB
-  stick are the ones used in the thesis.
+- **Centred GWHD patches (`--dense`).** The centred datasets (`gwhd_bags_dense*`) were
+  created with `create_gwhd_bags.py`; the script was changed afterwards. In its current
+  form it parses `--dense` but does not pass it on to `generate_patch_definitions`, so
+  the centred patch definition is not reachable from the command line. The datasets on
+  the USB stick are the ones used in the thesis. The recorded calls are in
+  `data/data_management/create_datasets.sh`.
 - **Reduced density.** No script in this repository creates `gwhd_reduced_pos.h5`.
 - **Earlier GWHD file.** The experiments from May 2026 (`attention_gwhd_optimization*`,
   `first_results`, `sigmoid_v_softmax`, `gwhd_model_parameter_sweep`) read
