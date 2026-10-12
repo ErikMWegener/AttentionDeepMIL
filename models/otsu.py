@@ -2,6 +2,13 @@ import numpy as np
 import torch
 
 def compute_otsu_threshold(A):
+    """Otsu threshold for the attention weights of one bag (Otsu 1979).
+
+    Searches a 256-bin histogram on [0, 1] for the threshold that maximises the
+    between-class variance. Used as the default counting threshold for the
+    sigmoid and min-max attention activations (``count_positive_instances``).
+    Returns 0.5 if no split separates the weights.
+    """
     A_flat = A.flatten().cpu().numpy()
 
     hist, bin_edges = np.histogram(A_flat, bins=256, range=(0,1))

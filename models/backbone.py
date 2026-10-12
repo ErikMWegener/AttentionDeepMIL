@@ -8,6 +8,20 @@ import torch
 import torch.nn as nn
 
 class Backbone(nn.Module):
+    """Patch feature extractor of the AbMIL and CLAM models (Ilse et al. 2018, MNIST variant).
+
+    conv(k) -> ReLU -> maxpool 2x2 -> conv(k) -> ReLU -> adaptive maxpool to
+    pool_size x pool_size -> FC -> ReLU. Maps a bag [1, K, C, H, W] (or [K, C, H, W])
+    to one feature vector per patch [K, M], independent of the patch size.
+
+    Args:
+        in_channels: 1 for grayscale, 3 for colour patches.
+        kernel_size: kernel size of both convolutions.
+        num_maps: number of feature maps of the second convolution.
+        pool_size: output size of the adaptive max pooling.
+        M: size of the feature vector.
+        grayscaling: prepend ``LearnedGrayscale`` (RGB -> 1 channel, learnt).
+    """
     def __init__(self, in_channels=3, kernel_size=3, num_maps=64, pool_size=4, M=500, grayscaling=False):
         super().__init__()
         self.kernel_size = kernel_size

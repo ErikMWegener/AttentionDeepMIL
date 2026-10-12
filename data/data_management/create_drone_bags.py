@@ -1,3 +1,16 @@
+"""Bags from the time-separated drone images Drone_BBG (thesis section "Real drone images").
+
+Positive patches are cut on a regular grid from the images taken after the ears
+became visible (POS_PATH, Drone_BBG_2), negative patches on a regular grid from the
+images taken before flowering (NEG_PATH, Drone_BBG_1). No annotations are used, so
+every patch of a positive image counts as positive (possible label noise, see thesis).
+The bag sampling is the same as in create_gwhd_bags.py. ``--legacy`` (one bag per
+image) was not used in the thesis.
+
+Example (run from data/data_management/):
+    python create_drone_bags.py --output_path ../datasets/bags/drone_bags.h5 \
+        --dataset_name drone_128_bags --patch_size 128 --stride 128 --grayscale
+"""
 from PIL import Image
 from tqdm import tqdm
 
@@ -31,13 +44,7 @@ def build_transform(grayscale=True):
 
 
 def load_metadata():
-    """Load the image file names and the wheat-head middle points.
-
-    Positive images each have a matching ``.txt`` file that contains one
-    ``x y`` middle point of a wheat head per line. Negative images have no
-    wheat heads. Returns the positive/negative png file names and a mapping
-    ``{positive_png: np.ndarray of shape (N, 2)}`` of middle points.
-    """
+    """Sorted .JPG file names of the positive (POS_PATH) and negative (NEG_PATH) images."""
     pos_jpgs = sorted([f for f in os.listdir(POS_PATH) if f.endswith('.JPG')])
     neg_jpgs = sorted([f for f in os.listdir(NEG_PATH) if f.endswith('.JPG')])
 
@@ -58,11 +65,10 @@ def load_point_annotations(annotation_path):
 def create_patch_definitions(pos_jpgs, neg_jpgs, patch_size=128, stride=128):
     """Create lightweight patch definitions without loading pixel data.
 
-    Positive patches are cut directly centered on the wheat-head middle points
-    of the positive images. Negative patches are taken from a regular grid over
-    the negative images only. Each definition stores the source image path and
-    the crop coordinates so the actual images are only opened/cropped later,
-    when the bags are written.
+    Positive patches are taken from a regular grid over the positive images,
+    negative patches from a regular grid over the negative images. Each
+    definition stores the source image path and the crop coordinates so the
+    actual images are only opened/cropped later, when the bags are written.
     """
     positive_patches = []
     negative_patches = []

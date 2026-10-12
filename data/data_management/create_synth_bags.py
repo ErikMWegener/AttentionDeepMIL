@@ -1,3 +1,15 @@
+"""Bags from the synthetic Blender images (thesis section "Synthetic drone images").
+
+Positive patches are centred on the annotated ear middle points of the positive
+images (POS_PATH, one ``x y`` per line in ``<image>.txt``), negative patches are
+cut on a regular grid from the negative images without ears (NEG_PATH). The bag
+sampling is the same as in create_gwhd_bags.py. ``--legacy`` (one bag per image)
+was not used in the thesis.
+
+Example (run from data/data_management/):
+    python create_synth_bags.py --output_path ../datasets/bags/synth_bags_shuffled.h5 \
+        --dataset_name synth_bags_shuffled --patch_size 64 --stride 64 --grayscale
+"""
 from PIL import Image
 from tqdm import tqdm
 

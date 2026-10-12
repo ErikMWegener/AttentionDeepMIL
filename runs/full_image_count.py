@@ -1,3 +1,12 @@
+"""Full-image evaluation: from patch counts to wheat-ear counts (thesis section
+"From patch to wheat ear counts").
+
+Each full image is cut into a regular grid of patches (stride = patch size), the
+trained CLAM model scores every patch, and the patch count is compared with the
+point annotations (``<image>.txt``, one ``x y`` per ear). ``fit_calibration``
+fits the linear or isotonic conversion patch count -> ear count on the
+calibration images. Used by ``main_mlflow.py --full_image_test/--full_image_cal``.
+"""
 import os
 
 import numpy as np

@@ -1,3 +1,12 @@
+"""Count statistics of a bag dataset per split (used for the bag overview table of the thesis).
+
+Prints mean/median/quartiles of the positive-patch counts of the positive bags for
+train/validation/test and saves a histogram per split to
+eval/results/<dataset>_histogram_splits.png. Run from data/data_management/:
+
+    python check_dataset.py ../datasets/bags/gwhd_bags_dense.h5 gwhd_bags_dense
+"""
+import os
 import numpy as np
 import pandas as pd
 from dataset_manager import DatasetReader
@@ -46,6 +55,7 @@ def plot_split_histograms(train_stats, val_stats, test_stats):
         ax.grid(axis='y', linestyle='--', alpha=0.7)
     
     plt.tight_layout()  # Verhindert, dass sich Labels überschneiden
+    os.makedirs('../../eval/results', exist_ok=True)
     plt.savefig(f'../../eval/results/{dataset_name}_histogram_splits.png')  # Bei Bedarf als Bilddatei abspeichern
     #plt.show()
 

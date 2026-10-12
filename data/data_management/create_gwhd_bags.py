@@ -1,3 +1,23 @@
+"""Bags from the GWHD 2021 images (thesis sections "GWHD dataset",
+"Patch extraction and labelling" and "Bag construction").
+
+1. Patch definitions: a regular grid of patch_size x patch_size crops over each
+   image; a patch is positive if a bounding box covers at least
+   ``--overlap_threshold`` of its area, otherwise negative.
+2. Splits: ``--original_split`` keeps the official GWHD train/val/test images;
+   otherwise all images are shuffled (``--seed``) and the patch pools are split in
+   proportion to ``--num_bags``.
+3. Bags: per split, half of the bags are positive with a number of positive
+   patches drawn uniformly from 1..(bag length - 1); the bag length is drawn from a
+   normal distribution with mean ``--mean_bag_len`` and standard deviation
+   ``--var_bag_len``. Patches are sampled with replacement from the split's pools.
+   Patches are converted to grayscale with ``--grayscale`` and normalised to [-1, 1].
+
+Run from data/data_management/, for example
+    python create_gwhd_bags.py --output_path ../datasets/bags/my_gwhd_bags.h5 \
+        --dataset_name my_gwhd_bags --num_bags 1000 200 200 --patch_size 64 \
+        --overlap_threshold 0.7 --grayscale
+"""
 from collections import defaultdict
 from importlib.resources import path
 import os
@@ -23,6 +43,7 @@ VAL_CSV_PATH = '../datasets/gwhd_2021/competition_val.csv'
 IMAGE_PATH = '../datasets/gwhd_2021/images'
 
 def load_full_metadata():
+    """Bounding boxes of the official train/val/test images as three dicts {image_name: [boxes]}."""
     df_train = pd.read_csv(TRAIN_CSV_PATH)
     df_test = pd.read_csv(TEST_CSV_PATH)
     df_val = pd.read_csv(VAL_CSV_PATH)
@@ -34,6 +55,7 @@ def load_full_metadata():
     return metadata_train, metadata_val, metadata_test
 
 def load_metadata(df):
+    """Parse the ``BoxesString`` column of a GWHD competition CSV into {image_name: [(x1, y1, x2, y2), ...]}."""
     metadata = {}
     for _, row in df.iterrows():
         image_id = row['image_name']
@@ -50,6 +72,7 @@ def load_metadata(df):
 # Compute the overlap between a patch and a bounding box 
 
 def compute_overlap(patch_box, bbox):
+    """Fraction of the patch area covered by the bounding box (intersection / patch area)."""
     x1 = max(patch_box[0], bbox[0])
     y1 = max(patch_box[1], bbox[1])
     x2 = min(patch_box[2], bbox[2])
@@ -67,6 +90,13 @@ def compute_overlap(patch_box, bbox):
 # Generate patch list with coordinates, the correspinding image ID and the label for each patch based on the overlap with the bounding boxes
 
 def extract_box_patches(bbox, img_w, img_h, patch_size=28, stride=28, threshold=1.0):
+    """Grid of patches centred on one bounding box ("centred" patch definition).
+
+    The grid has max(1, floor(s_box * (2 - threshold) / stride)) patches per axis,
+    so every box yields at least one patch and the grid grows with the box size
+    (formula in the thesis section "Patch extraction and labelling"). The grid is
+    shifted back into the image where it would cross the border.
+    """
     x1, y1, x2, y2 = bbox
 
     box_h = y2 - y1

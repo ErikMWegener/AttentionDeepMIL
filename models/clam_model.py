@@ -1,11 +1,5 @@
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from models.backbone import Backbone
-from models.learned_grayscale import LearnedGrayscale
 """
-CLAM für binäres MIL mit CNN-Backbone (angepasst an Eriks Attention-MIL-Setup).
+CLAM für binäres MIL mit CNN-Backbone (angepasst an das Attention-MIL-Setup dieser Arbeit).
 
 Geprüft gegen mahmoodlab/CLAM (models/model_clam.py, CLAM_SB).
 Bewusste Abweichungen vom Original sind im Code markiert:
@@ -20,9 +14,16 @@ Bewusste Abweichungen vom Original sind im Code markiert:
 
   [ANPASSUNG 3] Out-of-the-class-Clustering läuft auch ohne Subtyping.
       Original überspringt inst_eval_out bei einfacher Klassifikation. Hier ist es
-      aktiv, weil Eriks negative Bags garantiert nur negative Patches enthalten --
+      aktiv, weil die negativen Bags garantiert nur negative Patches enthalten --
       "alle Top-Attention-Instanzen sind negativ" ist damit korrekte Supervision.
 """
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from models.backbone import Backbone
+from models.learned_grayscale import LearnedGrayscale
+
 
 
 class AttnNetGated(nn.Module):
@@ -46,6 +47,25 @@ class AttnNetGated(nn.Module):
 
 
 class CLAM(nn.Module):
+    """CLAM-based MIL model used in the thesis (section "CLAM-based implementation").
+
+    Gated attention pooling for the bag prediction plus an instance classifier
+    that is trained on pseudo-labels derived from the attention weights.
+    The instance classifier is also what is used for counting
+    (``count_positive_instances``).
+
+    Pseudo-labelling (``pseudo_threshold``):
+        False: top-k / bottom-k patches by attention (``k_sample``) become
+            positive / negative pseudo-labels in positive bags; in negative bags
+            the top-k patches are negative (standard CLAM).
+        True:  quantile-based pseudo-labels (``pseudo_quantile_pos``,
+            ``pseudo_quantile_neg``), so the number of pseudo-positives scales
+            with the bag (thesis section "Quantile-based pseudo-labelling").
+
+    The loss is ``bag_weight * bag_CE + (1 - bag_weight) * instance_CE``
+    (see ``calculate_objective``). ``count_threshold`` is stored as a buffer so a
+    threshold calibrated on the validation split is saved in the state dict.
+    """
     def __init__(self, M=500, L=128, num_maps=50, kernel_size=5, pool_size=4,
                  in_channels=3, k_sample=8, pseudo_threshold = False, dropout=0.25,
                  instance_loss_fn=None, subtyping=False,
@@ -71,20 +91,7 @@ class CLAM(nn.Module):
         # state_dict mitgespeichert und beim Laden wiederhergestellt wird.
         self.register_buffer('count_threshold', torch.tensor(float(count_threshold)))
 
-        # self.grayscale_layer = LearnedGrayscale() if self.grayscaling else nn.Identity()
-        # # -- [ANPASSUNG 1] CNN-Backbone (identisch zu model.Attention) --------
-        # self.feature_extractor_part1 = nn.Sequential(
-        #     nn.Conv2d(in_channels, 20, kernel_size=kernel_size, padding=kernel_size // 2),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(2, stride=2),
-        #     nn.Conv2d(20, num_maps, kernel_size=kernel_size, padding=kernel_size // 2),
-        #     nn.ReLU(),
-        #     nn.AdaptiveMaxPool2d((pool_size, pool_size)),
-        # )
-        # self.feature_extractor_part2 = nn.Sequential(
-        #     nn.Linear(num_maps * pool_size * pool_size, M),
-        #     nn.ReLU(),
-        # )
+        # [ANPASSUNG 1] CNN backbone, identical to model.Attention
         self.backbone = Backbone(in_channels=in_channels, kernel_size=kernel_size, num_maps=num_maps, pool_size=pool_size, M=M, grayscaling=grayscaling)
 
         # -- Attention-Zweig (gated, wie CLAM_SB) -----------------------------
@@ -188,7 +195,7 @@ class CLAM(nn.Module):
                 if lbl == 1:
                     instance_loss, _, _ = self.inst_eval(A, H)        # positive Bag
                 else:
-                    # [ANPASSUNG 3]: bei dir immer aktiv (negative Bags sind rein negativ)
+                    # [ANPASSUNG 3]: immer aktiv (negative Bags sind rein negativ)
                     instance_loss, _, _ = self.inst_eval_out(A, H)    # negative Bag
 
         # -- Bag-Aggregation und -Klassifikation ------------------------------
@@ -236,10 +243,6 @@ class CLAM(nn.Module):
             threshold = float(self.count_threshold)
         with torch.no_grad():
             x = X.squeeze(0)
-            # x = self.grayscale_layer(x)  # Apply learned grayscale conversion if enabled
-            # H = self.feature_extractor_part1(x)
-            # H = H.view(-1, self.num_maps * self.pool_size * self.pool_size)
-            # H = self.feature_extractor_part2(H)
             H = self.backbone(x)
             inst_probs = F.softmax(self.instance_classifier(H), dim=1)[:, 1]
             count = int((inst_probs > threshold).sum().item())

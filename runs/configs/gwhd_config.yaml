@@ -1,0 +1,7 @@
+epochs: 50
+lr: 0.0005
+reg: 0.00001 
+dataset: "gwhd_bags_dense"
+path: "../data/datasets/bags/gwhd_bags_dense.h5" 
+seeds: [1, 10, 100]
+naive_counting: true

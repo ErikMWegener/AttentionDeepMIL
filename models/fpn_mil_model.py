@@ -1,3 +1,6 @@
+# NOTE: The FPN-MIL model was implemented and tested (MLflow experiments
+# fpn_mil_gwhd, synth_models) but is not used in the thesis. It is kept because
+# runs/main_mlflow.py can still build it via --model fpn_mil.
 """
 fpn_mil_model.py
 ================

@@ -1,3 +1,18 @@
+"""Supervised patch classifier (thesis section "Supervised baseline classifier").
+
+Trains the AbMIL backbone plus a linear head directly on the patch labels of a
+bag dataset. Serves two purposes:
+  * upper bound for the patch-level AUC that the backbone can reach with full
+    supervision (reported per seed as test AUC),
+  * pretraining: the backbone weights are saved to
+    ``<output_dir>/patch_classifier_<dataset>[_seed<s>].pth`` and can be loaded
+    into the MIL models with ``main_mlflow.py --pretrained_backbone``.
+
+Training uses at most 10k train / 2k test patches.
+
+    cd models && python patch_classifier.py --path ../data/datasets/bags/gwhd_bags_dense.h5 \
+        --dataset gwhd_bags_dense --seeds 1 10 100 1000 10000
+"""
 import argparse
 import sys
 import os
@@ -16,6 +31,7 @@ from models.backbone import Backbone
 from models.learned_grayscale import LearnedGrayscale
 
 class PatchClassifier(nn.Module):
+    """``Backbone`` followed by a linear layer that outputs one logit per patch."""
     def __init__(self, in_channels=3, kernel_size=3, num_maps=64, pool_size=4, M=128, grayscaling=False):
         super().__init__()
         self.backbone = Backbone(in_channels=in_channels, 

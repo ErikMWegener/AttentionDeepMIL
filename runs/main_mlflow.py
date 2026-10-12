@@ -281,6 +281,7 @@ def save_run_config(args):
         Path of the written YAML file.
     """
     print(f"No config file provided. Using default arguments and command line overrides.")
+    os.makedirs("configs", exist_ok=True)
     args_dict = vars(args)
     config_filename = (f"configs/{args.model}_{args.dataset}_lr{args.lr}_reg{args.reg}"
                        f"_ep{args.epochs}_attention_activation{args.attention_activation}_config.yaml")

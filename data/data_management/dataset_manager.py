@@ -1,18 +1,33 @@
+"""Read/write access to the HDF5 bag files shared by all bag generators and the training.
+
+Layout of a bag file::
+
+    <dataset_name>/<bag_id>/            one group per bag
+        patches          [K, C, H, W]   float, already normalised, gzip-compressed
+        instance_label   [K]            1 = positive patch, 0 = negative (optional)
+        coords           [K, ...]       crop coordinates (optional, often empty)
+        attrs: label  (bag label 0/1), count (number of positive patches, -1 = unknown),
+               split  ('train' / 'validation' / 'test'), plus optional metadata
+
+A file can hold several datasets (top-level groups), e.g. the 21 bag-size
+datasets of the MNIST sweep. ``DatasetReader`` returns one bag per item as
+``(patches, coords, label, count, instance_label)``.
+"""
 import h5py
 import torch
 import numpy as np
 
 class DatasetWriter:
+    """Appends bags to an HDF5 bag file (layout see module docstring)."""
     def __init__(self, path):
         self.path = path
 
-    # The write method takes the dataset name, image ID, coordinates of the patches, 
-    # label of the bag, and optionally the patches themselves, count of instances in the bag, 
-    # instance-level labels, and any additional metadata. 
-    # It writes this information to an H5 file in a structured format.
-    
     def write(self, dataset_name, image_id, coords, label, patches=None, 
               count=None, instance_label=None, split='train', **meta):
+        """Write one bag; an existing bag with the same ``image_id`` is replaced.
+
+        Extra keyword arguments are stored as group attributes.
+        """
         with h5py.File(self.path, 'a') as f:
             key = f'{dataset_name}/{image_id}'
             if key in f:                
@@ -41,6 +56,12 @@ class DatasetWriter:
 
 
 class DatasetReader(torch.utils.data.Dataset):
+    """PyTorch dataset over the bags of one split of one dataset in a bag file.
+
+    The file is opened per item, so the reader can be used with several
+    DataLoader workers. Missing ``coords``/``instance_label`` are replaced by an
+    empty tensor / a tensor of -1.
+    """
     def __init__(self, path, dataset_name, split='train'):
         self.path = path
         self.split = split

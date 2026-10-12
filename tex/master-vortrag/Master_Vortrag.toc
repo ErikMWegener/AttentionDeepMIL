@@ -1,3 +1,0 @@
-\babel@toc {ngerman}{}\relax 
-\beamer@sectionintoc {1}{Motivation}{3}{0}{1}
-\beamer@sectionintoc {2}{The idea}{4}{0}{2}

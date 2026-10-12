@@ -1,3 +1,23 @@
+"""MNIST bags for the method validation (thesis sections "MNIST dataset" and
+"Method validation on MNIST dataset").
+
+Two sampling methods, both with target digit 9 (bag label = bag contains a 9,
+count = number of 9s):
+
+  base  bag-size sweep after Ilse et al. (2018): bag length ~ N(L, L/5), digits drawn
+        at random, positive and negative bags alternate. Datasets bags{N}_len{L}
+        with N in {50..500} training bags, N/5 validation/test bags, L in {10, 50, 100}.
+  even  high-density bags: length 100, half of the bags positive with a number of
+        9s drawn uniformly from 1..99 (dataset mnist_bags_even, 1000/200/200 bags).
+
+Training bags come from the MNIST training set, validation and test bags from the
+MNIST test set. Both use the same seed, so validation and test bags are
+identical; in the MNIST experiments the validation split is only logged.
+
+Run from data/data_management/:
+    python mnist_bags_loader_h5.py --mode sweep   # bags{N}_len{L}
+    python mnist_bags_loader_h5.py --mode even    # mnist_bags_even (default)
+"""
 import numpy as np
 import torch
 import torch.utils.data as data_utils
@@ -167,14 +187,21 @@ def generate_and_save_mnist_bags(
 
 
 if __name__ == '__main__':
-    # length = [10,50, 100]
-    # bags = [50,100,150,200,300,400,500]
-    # for l in length:
-    #     for b in bags:
-    #         dataset_name = f"bags{b}_len{l}"
-    #         generate_and_save_mnist_bags(output_path='../datasets/mnist_bags_base.h5', dataset_name=dataset_name, split='train', num_bag=b, mean_bag_length=l)
-    #         generate_and_save_mnist_bags(output_path='../datasets/mnist_bags_base.h5', dataset_name=dataset_name, split='test', num_bag=int(b/5), mean_bag_length=l)
-    #         generate_and_save_mnist_bags(output_path='../datasets/mnist_bags_base.h5', dataset_name=dataset_name, split='validation', num_bag=int(b/5), mean_bag_length=l)
-    generate_and_save_mnist_bags(output_path='../datasets/bags/mnist_bags_base.h5', dataset_name="mnist_bags_even", split='train', num_bag=1000, method ='even')
-    generate_and_save_mnist_bags(output_path='../datasets//bags/mnist_bags_base.h5', dataset_name="mnist_bags_even", split='test', num_bag=200, method ='even')
-    generate_and_save_mnist_bags(output_path='../datasets/bags/mnist_bags_base.h5', dataset_name="mnist_bags_even", split='validation', num_bag=200, method ='even')         
+    import argparse
+    parser = argparse.ArgumentParser(description='Generate the MNIST bag datasets of the thesis.')
+    parser.add_argument('--mode', choices=['sweep', 'even'], default='even',
+                        help='sweep: bag-size sweep bags{N}_len{L}; even: high-density mnist_bags_even')
+    parser.add_argument('--output_path', default='../datasets/bags/mnist_bags_base.h5')
+    args = parser.parse_args()
+
+    if args.mode == 'sweep':
+        for l in [10, 50, 100]:
+            for b in [50, 100, 150, 200, 300, 400, 500]:
+                dataset_name = f"bags{b}_len{l}"
+                generate_and_save_mnist_bags(output_path=args.output_path, dataset_name=dataset_name, split='train', num_bag=b, mean_bag_length=l)
+                generate_and_save_mnist_bags(output_path=args.output_path, dataset_name=dataset_name, split='test', num_bag=int(b/5), mean_bag_length=l)
+                generate_and_save_mnist_bags(output_path=args.output_path, dataset_name=dataset_name, split='validation', num_bag=int(b/5), mean_bag_length=l)
+    else:
+        generate_and_save_mnist_bags(output_path=args.output_path, dataset_name="mnist_bags_even", split='train', num_bag=1000, method='even')
+        generate_and_save_mnist_bags(output_path=args.output_path, dataset_name="mnist_bags_even", split='test', num_bag=200, method='even')
+        generate_and_save_mnist_bags(output_path=args.output_path, dataset_name="mnist_bags_even", split='validation', num_bag=200, method='even')
