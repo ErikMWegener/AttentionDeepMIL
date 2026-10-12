@@ -46,10 +46,24 @@ BAG_WEIGHT=0.7        # in beiden Phasen identisch
 K_SAMPLE=20           # Phase A: Top-k-Clustering
 Q_POS=0.8             # Phase B: Quantil-Pseudolabels
 Q_NEG=0.1
+
+# ── Fortsetzen eines abgebrochenen Jobs ──────────────────────────────────
+# Pfad zur DB des abgebrochenen Jobs, z.B. "${WORK_DIR}/mlflow_<ALTE_JOB_ID>.db".
+# Sie wird in die DB dieses Jobs kopiert (das Original bleibt unveraendert),
+# greedy_search.py laeuft mit --resume und trainiert erst ab dem ersten
+# fehlenden Trial. Leer lassen fuer einen frischen Lauf.
+RESUME_DB=""
 # ============================================================
 
 echo "=== Job gestartet: $(date) ==="
 echo "=== Knoten: $(hostname) ==="
+
+RESUME_FLAG=""
+if [ -n "${RESUME_DB}" ]; then
+  cp "${RESUME_DB}" "${WORK_DIR}/mlflow_${SLURM_JOB_ID}.db"
+  RESUME_FLAG="--resume"
+  echo "=== Fortsetzung aus ${RESUME_DB} ==="
+fi
 
 # ============================================================
 # Container starten und beide Greedy-Suchen ausführen
@@ -91,7 +105,7 @@ srun \
       --rounds ${ROUNDS} \
       --final_seeds ${FINAL_SEEDS} \
       --path '${DATA_PATH}' \
-      --dataset ${DATASET}
+      --dataset ${DATASET} ${RESUME_FLAG}
 
     # ── Phase B: Quantil-Pseudolabels (q_pos=${Q_POS}, q_neg=${Q_NEG}) ────────
     echo '=== [Phase B] CLAM Pseudo-Threshold: q_pos=${Q_POS}, q_neg=${Q_NEG}, bag_weight=${BAG_WEIGHT} ==='
@@ -114,7 +128,7 @@ srun \
       --rounds ${ROUNDS} \
       --final_seeds ${FINAL_SEEDS} \
       --path '${DATA_PATH}' \
-      --dataset ${DATASET}
+      --dataset ${DATASET} ${RESUME_FLAG}
 
     # Nach dem Training: DB ins Heimverzeichnis kopieren,
     # damit rsync sie vom Login-Knoten aus erreichen kann.

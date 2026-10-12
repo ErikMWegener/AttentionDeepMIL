@@ -4,6 +4,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data as data_utils
@@ -56,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument('--pool_size', type=int, default=4, help='Size of the adaptive pooling layer')
     parser.add_argument('--M', type=int, default=500, help='Size of the fully connected layer in the backbone')
     parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs')
+    parser.add_argument('--seeds', nargs='+', type=int, default=[1], help='Random seeds (Daten werden nur einmal geladen)')
     parser.add_argument('--no_cuda', action='store_true', help='Don\'t use CUDA', default=False)
 
     args = parser.parse_args()
@@ -71,33 +73,57 @@ if __name__ == "__main__":
 
     device = "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"
 
-    model = PatchClassifier(
-        in_channels=Xtr.shape[1],
-        kernel_size=args.kernel_size,
-        num_maps=args.num_maps,
-        pool_size=args.pool_size,
-        M=args.M,
-        grayscaling=args.grayscaling
-    ).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-    lossf = nn.BCEWithLogitsLoss()
-    ds = data_utils.TensorDataset(Xtr, ytr)
-    dl = data_utils.DataLoader(ds, batch_size=128, shuffle=True)
+    Xte_dev = Xte.to(device)
 
-    for epoch in range(args.epochs):
-        model.train()
-        for xb, yb in dl:
-            xb, yb = xb.to(device), yb.to(device)
-            opt.zero_grad()
-            loss = lossf(model(xb), yb)
-            loss.backward()
-            opt.step()
+    def train_seed(seed):
+        torch.manual_seed(seed)
+        if device == "cuda":
+            torch.cuda.manual_seed(seed)
 
-        model.eval()
-        with torch.no_grad():
-            y_pred = model(Xte.to(device)).cpu()
-            auc = roc_auc_score(yte.numpy(), y_pred.numpy())
-            print(f"Epoch {epoch+1}/{args.epochs} | Test AUC: {auc:.4f}")
+        model = PatchClassifier(
+            in_channels=Xtr.shape[1],
+            kernel_size=args.kernel_size,
+            num_maps=args.num_maps,
+            pool_size=args.pool_size,
+            M=args.M,
+            grayscaling=args.grayscaling
+        ).to(device)
+        opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+        lossf = nn.BCEWithLogitsLoss()
+        ds = data_utils.TensorDataset(Xtr, ytr)
+        dl = data_utils.DataLoader(ds, batch_size=128, shuffle=True)
 
-    torch.save(model.backbone.state_dict(), f"{args.output_dir}/patch_classifier_{args.dataset}.pth")
-    print(f"Model saved to {args.output_dir}/patch_classifier_{args.dataset}.pth")
+        best_auc = 0.0
+        for epoch in range(args.epochs):
+            model.train()
+            for xb, yb in dl:
+                xb, yb = xb.to(device), yb.to(device)
+                opt.zero_grad()
+                loss = lossf(model(xb), yb)
+                loss.backward()
+                opt.step()
+
+            model.eval()
+            with torch.no_grad():
+                y_pred = model(Xte_dev).cpu()
+                auc = roc_auc_score(yte.numpy(), y_pred.numpy())
+                best_auc = max(best_auc, auc)
+                print(f"[Seed {seed}] Epoch {epoch+1}/{args.epochs} | Test AUC: {auc:.4f}")
+
+        # Bei mehreren Seeds wird der Seed angehängt, damit sich die Gewichte nicht überschreiben
+        suffix = f"_seed{seed}" if len(args.seeds) > 1 else ""
+        path = f"{args.output_dir}/patch_classifier_{args.dataset}{suffix}.pth"
+        torch.save(model.backbone.state_dict(), path)
+        print(f"Model saved to {path}")
+        return auc, best_auc
+
+    results = {seed: train_seed(seed) for seed in args.seeds}
+
+    if len(args.seeds) > 1:
+        final = np.array([r[0] for r in results.values()])
+        best = np.array([r[1] for r in results.values()])
+        print("\nSeed | final AUC | best AUC")
+        for seed, (f, b) in results.items():
+            print(f"{seed:>4} | {f:.4f}    | {b:.4f}")
+        print(f"Final AUC: {final.mean():.4f} ± {final.std(ddof=1):.4f}")
+        print(f"Best AUC:  {best.mean():.4f} ± {best.std(ddof=1):.4f}")

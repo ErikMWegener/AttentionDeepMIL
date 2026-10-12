@@ -204,7 +204,8 @@ def build_arg_parser():
                         help='CLAM: vergleicht Count-Threshold-Strategien (Sweep, Otsu, Val-kalibriert, Baseline) im Test; alle bag-gegatet')
     parser.add_argument('--calibrate_count_threshold', action='store_true', default=False,
                         help='CLAM: kalibriert den Zaehl-Threshold auf dem Val-Split und benutzt ihn '
-                             'fuer count_positive_instances im Test (statt Default 0.5)')
+                             'fuer count_positive_instances im Test (statt Default 0.5). Mit '
+                             '--full_image_only auf den Val-Bags von --path/--dataset')
     parser.add_argument('--soft_counting', action='store_true', default=False,
                         help='CLAM: zusaetzlicher Soft-Count (Summe der Instanz-Wahrscheinlichkeiten, bag-gegatet) in count_threshold_eval')
 
@@ -1426,8 +1427,68 @@ def run_full_image_eval(model, args):
     return df
 
 
+def calibrate_threshold_on_val_bags(model, args):
+    """Kalibriert den Zaehl-Threshold eines geladenen CLAM-Modells auf dem Val-Split.
+
+    Fuer --full_image_only, wo kein Training und damit kein validate() laeuft.
+    Gleiches Verfahren wie im Training (validate + _calibrate_count_threshold):
+    Instanz-Wahrscheinlichkeiten je Val-Bag, die Bag-Entscheidung gatet die Bags,
+    CLAM.calibrate_threshold waehlt den Threshold mit minimaler Val-MAE. Der Wert
+    landet im count_threshold-Buffer des Modells und wird so von
+    run_full_image_eval benutzt.
+
+    --path/--dataset muessen auf die Bags zeigen, auf denen das Modell trainiert
+    wurde (z.B. annot_drone_64_bags fuer ein 64-px-Modell).
+
+    Returns:
+        Der kalibrierte Threshold.
+    """
+    loader_kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+    val_loader = data_utils.DataLoader(DatasetReader(args.path, dataset_name=args.dataset, split='validation'),
+                                       batch_size=1,
+                                       shuffle=False,
+                                       **loader_kwargs)
+    if len(val_loader) == 0:
+        raise ValueError(f'Keine Val-Bags in {args.path} / {args.dataset} - '
+                         f'--path/--dataset muessen auf die Trainings-Bags des Modells zeigen.')
+
+    scores_per_bag, true_counts, pred_pos = [], [], []
+    model.eval()
+    with torch.no_grad():
+        for patches, coords, label, count, instance_label in val_loader:
+            if patches.shape[-1] != args.full_image_patch_size:
+                raise ValueError(
+                    f'Val-Bags in {args.dataset} haben {patches.shape[-1]}-px-Patches, '
+                    f'--full_image_patch_size ist {args.full_image_patch_size}. '
+                    f'--path/--dataset muessen auf die Trainings-Bags des Modells zeigen.')
+            if args.cuda:
+                patches = patches.cuda()
+            patches = patches.squeeze(0)
+            _, _, predicted_label, _, _ = model(patches)
+            _, inst_probs = model.count_positive_instances(patches.unsqueeze(0), threshold=0.5)
+            scores_per_bag.append(inst_probs.cpu().numpy())
+            true_counts.append(int(count.item()) if torch.is_tensor(count) else int(count))
+            pred_pos.append(bool(predicted_label.view(-1).cpu().item() == 1))
+
+    thr, val_bias, val_mae = CLAM.calibrate_threshold(
+        scores_per_bag, true_counts, pred_pos=np.asarray(pred_pos, dtype=bool))
+    model.set_count_threshold(thr)
+
+    print(f'Zaehl-Threshold auf Val-Bags kalibriert ({args.dataset}): thr={thr:.2f} '
+          f'(Val-Bias={val_bias:+.2f}, Val-MAE={val_mae:.2f})')
+    log_metrics_safe({'count_calibrated_threshold': thr,
+                      'count_calibrated_val_bias': val_bias,
+                      'count_calibrated_val_mae': val_mae})
+    return thr
+
+
 def run_full_image_only(args):
-    """Ganzbild-Auswertung mit vortrainiertem Modell: keine Loader, kein Training, kein Test."""
+    """Ganzbild-Auswertung mit vortrainiertem Modell: kein Training, kein Test.
+
+    Zaehl-Threshold, in dieser Reihenfolge: --full_image_threshold, sonst mit
+    --calibrate_count_threshold ein auf den Val-Bags kalibrierter Wert, sonst
+    der im state_dict gespeicherte Buffer.
+    """
     if args.model != 'clam':
         raise ValueError('--full_image_only ist nur fuer --model clam verfuegbar.')
     if not args.load_model:
@@ -1441,6 +1502,13 @@ def run_full_image_only(args):
         model.cuda()
         print('\nGPU is ON!')
     load_model_state(model, args.load_model, "cuda" if args.cuda else "cpu")
+
+    if args.calibrate_count_threshold:
+        if args.full_image_threshold is not None:
+            print('Hinweis: --full_image_threshold ist gesetzt und hat Vorrang; '
+                  '--calibrate_count_threshold wird ignoriert.')
+        else:
+            calibrate_threshold_on_val_bags(model, args)
 
     run_full_image_eval(model, args)
     return model_tags

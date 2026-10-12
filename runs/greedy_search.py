@@ -141,6 +141,41 @@ def read_score(client, experiment_id, run_name, targets):
     return score
 
 
+def load_finished_trials(client, experiment_id, args, order, targets):
+    """
+    Für --resume: liest die bereits abgeschlossenen Trials dieses Präfixes aus der DB.
+    Gibt {tuple(sorted(config.items())): score} zurück. Als abgeschlossen gilt ein
+    Parent-Run, wenn alle Zielmetriken vorhanden sind (gleiches Kriterium wie
+    read_score) und Seeds/Epochen zum aktuellen Aufruf passen. Ein beim Abbruch
+    laufender Trial hat noch keine aggregierten Metriken und wird neu gestartet.
+    """
+    runs = client.search_runs(
+        [experiment_id],
+        run_view_type=mlflow.entities.ViewType.ACTIVE_ONLY,
+        order_by=["attribute.start_time DESC"],
+        max_results=2000,
+    )
+    finished = {}
+    for r in runs:
+        name = r.data.tags.get("mlflow.runName", "")
+        params = r.data.params
+        if not name.startswith(f"{args.run_prefix}_t"):
+            continue
+        if params.get("seeds") != str(args.seeds):
+            continue
+        if args.epochs is not None and params.get("epochs") != str(args.epochs):
+            continue
+        if any(name_ not in r.data.metrics for name_, _ in targets):
+            continue
+        if any(p not in params for p in order):
+            continue
+        config = {p: int(params[p]) for p in order}
+        key = tuple(sorted(config.items()))
+        if key not in finished:  # absteigend sortiert -> neuester Run gewinnt
+            finished[key] = sum(w * r.data.metrics[n] for n, w in targets)
+    return finished
+
+
 def main():
     parser = argparse.ArgumentParser(description="Greedy Coordinate Descent für MIL-Hyperparameter")
     parser.add_argument("--config", required=True, help="Pfad zur YAML-Basis-Config")
@@ -182,6 +217,11 @@ def main():
                         help="Welche Parameter optimiert werden (default: alle). "
                              "Nicht gewählte Achsen werden NICHT übergeben und "
                              "stammen damit aus der --config-Datei.")
+    parser.add_argument("--resume", action="store_true", default=False,
+                        help="Abgeschlossene Trials (gleicher --run_prefix, gleiche Seeds/"
+                             "Epochen) aus der MLflow-DB übernehmen statt neu zu trainieren. "
+                             "Die Suche läuft denselben Pfad ab und trainiert erst ab dem "
+                             "ersten fehlenden Trial.")
     args = parser.parse_args()
 
     targets = parse_target_metric(args.target_metric)
@@ -202,6 +242,11 @@ def main():
     history = []
     trial_idx = [0]     # Liste, um in der Closure mutierbar zu sein
 
+    finished = {}
+    if args.resume:
+        finished = load_finished_trials(client, experiment_id, args, order, targets)
+        print(f"Resume: {len(finished)} abgeschlossene Trials in der DB gefunden.")
+
     def evaluate(config):
         key = tuple(sorted(config.items()))
         if key in cache:
@@ -209,8 +254,14 @@ def main():
             return cache[key]
         run_name = f"{args.run_prefix}_t{trial_idx[0]:03d}_" + "_".join(
             f"{k.replace('model_', '')}{v}" for k, v in sorted(config.items()))
-        run_trial(config, args, run_name)
-        score = read_score(client, experiment_id, run_name, targets)
+        if key in finished:
+            # Wie ein regulärer Trial behandeln, damit die Trial-Nummern der
+            # folgenden Runs dieselben sind wie bei einem durchgelaufenen Job.
+            score = finished[key]
+            print(f"\n  -> Trial: {run_name} (aus DB übernommen: score={score:.4f})")
+        else:
+            run_trial(config, args, run_name)
+            score = read_score(client, experiment_id, run_name, targets)
         if score is None:
             score = float("-inf")  # fehlgeschlagene/leere Runs sind nie "best"
         cache[key] = score
@@ -275,8 +326,14 @@ def main():
         final_args.seeds = args.final_seeds
         run_name = f"{args.run_prefix}_FINAL_" + "_".join(
             f"{k.replace('model_', '')}{v}" for k, v in sorted(best_config.items()))
-        run_trial(best_config, final_args, run_name)
-        final_score = read_score(client, experiment_id, run_name, targets)
+        final_score = None
+        if args.resume:
+            final_score = read_score(client, experiment_id, run_name, targets)
+        if final_score is None:
+            run_trial(best_config, final_args, run_name)
+            final_score = read_score(client, experiment_id, run_name, targets)
+        else:
+            print(f"  -> {run_name} bereits abgeschlossen (aus DB übernommen)")
         print(f"Finaler Score: {final_score}")
 
 
